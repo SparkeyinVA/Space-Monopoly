@@ -155,7 +155,7 @@ else High->Label11->Color=clBtnFace;
 bool LoadScores()
 {
 	FILE *input;
-	char buffer[20];
+	char buffer[20] ={};
     unsigned char last;	//last character got from input
     int mode;	//mode=0 - Get name
     			//mode=1 - Get score
@@ -224,7 +224,7 @@ void CreateScores()
 bool SaveScores()
 {
 	FILE *output;
-	char cash[20];
+	char cash[20]={};
 
 	if ( output = fopen("scores","wb") )
 	{
