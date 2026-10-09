@@ -1,0 +1,52 @@
+using SpaceMonopoly.Core;
+
+namespace SpaceMonopoly.WinForms;
+
+/// <summary>The high score tables for all three grid sizes. New entries are marked like the original's red blocks.</summary>
+internal sealed class HighScoresForm : Form
+{
+    public HighScoresForm(HighScoreTable table, Currency currency, GridSize show, IReadOnlyCollection<(GridSize Size, int Index)> fresh)
+    {
+        SuspendLayout();
+        Text = "High Scores";
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = MinimizeBox = false;
+        ShowInTaskbar = false;
+        StartPosition = FormStartPosition.CenterParent;
+        AutoScaleMode = AutoScaleMode.Dpi;
+        AutoScaleDimensions = new SizeF(96f, 96f);
+        Font = new Font("Segoe UI", 9f);
+        ClientSize = new Size(640, 380);
+
+        var tabs = new TabControl { Dock = DockStyle.Fill };
+        foreach (var size in Enum.GetValues<GridSize>())
+        {
+            var page = new TabPage(GridSpec.For(size).Label) { Padding = new Padding(6) };
+            var list = Ui.Table(("#", 36), ("Name", 150), ("Net wealth", 130), ("Player type", 150), ("Game", 80), ("Date", 80));
+            var entries = table.For(size);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                var e = entries[i];
+                var row = Ui.Row((i + 1).ToString(), e.Name, currency.Format(e.Wealth), e.Kind.Label(), e.GameType.ToString(), e.Date.ToShortDateString());
+                if (fresh.Contains((size, i)))
+                {
+                    row.BackColor = Color.MistyRose;
+                    row.Font = new Font(list.Font, FontStyle.Bold);
+                    row.Text = "★ " + row.Text;
+                }
+                list.Items.Add(row);
+            }
+            page.Controls.Add(list);
+            tabs.TabPages.Add(page);
+            if (size == show) tabs.SelectedTab = page;
+        }
+
+        var ok = Ui.Button("OK");
+        ok.DialogResult = DialogResult.OK;
+        AcceptButton = CancelButton = ok;
+        Controls.Add(tabs);
+        Controls.Add(Ui.ButtonBar(ok));
+        ResumeLayout(false);
+        PerformLayout();
+    }
+}

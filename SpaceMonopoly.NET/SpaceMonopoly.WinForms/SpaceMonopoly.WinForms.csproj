@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AssemblyName>SpaceMonopoly</AssemblyName>
+    <RootNamespace>SpaceMonopoly.WinForms</RootNamespace>
+    <ApplicationIcon>space.ico</ApplicationIcon>
+    <Product>Space Monopoly</Product>
+    <Version>2.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SpaceMonopoly.Core\SpaceMonopoly.Core.csproj" />
+  </ItemGroup>
+
+</Project>
