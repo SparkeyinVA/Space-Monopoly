@@ -27,9 +27,10 @@ public sealed class Game
 
     /// <summary>
     /// When every player's goes wouldn't fit on the board, goes are reduced so that about this share of
-    /// the empty squares gets used. Some squares can't be offered late on, so filling all of them isn't possible.
+    /// the empty squares gets used. Room for new companies usually runs out when a board is 75-80% full, which
+    /// ends the game early (see <see cref="Rounds"/>), so a higher share would promise rounds that never get played.
     /// </summary>
-    public const double BoardFillLimit = 0.9;
+    public const double BoardFillLimit = 0.75;
 
     private readonly World[] _worlds;
     private readonly Player[] _players;
@@ -73,6 +74,7 @@ public sealed class Game
         CurrentPlayerIndex = other.CurrentPlayerIndex;
         Turn = other.Turn;
         GoesPerPlayer = other.GoesPerPlayer;
+        _finalRound = other._finalRound;
         Phase = other.Phase;
     }
 
@@ -90,6 +92,17 @@ public sealed class Game
     /// How many goes each player gets: the grid size's number, or fewer if that many wouldn't fit on the board.
     /// </summary>
     public int GoesPerPlayer { get; }
+
+    private int? _finalRound;
+
+    /// <summary>
+    /// How many rounds the game will last: <see cref="GoesPerPlayer"/>, or fewer once no more companies can be
+    /// founded. In a tournament this happens as soon as it happens on any player's board.
+    /// </summary>
+    public int Rounds => _finalRound is int last ? Math.Min(GoesPerPlayer, last + 1) : GoesPerPlayer;
+
+    /// <summary>True once no new company can ever be founded and the game is playing out its last rounds.</summary>
+    public bool NoMoreCompanies => _finalRound is not null;
 
     /// <summary>True when the board was too small for the grid size's full number of goes.</summary>
     public bool GoesReduced => GoesPerPlayer < Spec.GoesPerPlayer;
@@ -117,7 +130,7 @@ public sealed class Game
     {
         get
         {
-            int rounds = Math.Max(0, GoesPerPlayer - Turn);
+            int rounds = Math.Max(0, Rounds - Turn);
             if (Type == GameType.Tournament) return rounds;
             return Math.Max(0, rounds * _players.Length - CurrentPlayerIndex);
         }
@@ -168,7 +181,7 @@ public sealed class Game
         CurrentPlayerIndex = (CurrentPlayerIndex + 1) % _players.Length;
         if (CurrentPlayerIndex == 0) Turn++;
 
-        if (Turn >= GoesPerPlayer)
+        if (Turn >= Rounds)
         {
             Phase = GamePhase.Over;
             _choices = [];
@@ -238,6 +251,13 @@ public sealed class Game
         _choices = [];
         Act(p, events);
         Phase = GamePhase.Trading;
+
+        // Once no company can be founded, the game ends after this round and one more.
+        if (_finalRound is null && !Board.CanStillFoundCompany())
+        {
+            _finalRound = Turn + 1;
+            events.Add(new NoMoreCompaniesEvent(CurrentPlayerIndex, Rounds));
+        }
         return events;
     }
 

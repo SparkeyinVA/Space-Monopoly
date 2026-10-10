@@ -125,9 +125,11 @@ public sealed class ClaudeCodeAi : IAiPlayer
         int me = game.CurrentPlayerIndex;
         var sb = new StringBuilder();
 
-        sb.AppendLine($"You are {game.Players[me].Name}. Round {game.Turn + 1} of {game.GoesPerPlayer} " +
+        sb.AppendLine($"You are {game.Players[me].Name}. Round {game.Turn + 1} of {game.Rounds} " +
                       $"({game.Type} game, {game.Spec.Width}x{game.Spec.Height} board, {game.Players.Count} players, " +
                       $"up to {game.Companies.Length} companies). Money is in Galactic Bucks (₲).");
+        if (game.NoMoreCompanies)
+            sb.AppendLine($"No more companies can be formed, so the game ends after round {game.Rounds}.");
         if (game.Type == GameType.Classic)
             sb.AppendLine("Classic game: everyone plays on this one board and shares its companies.");
         else

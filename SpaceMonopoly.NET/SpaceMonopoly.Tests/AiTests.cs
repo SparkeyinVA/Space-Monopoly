@@ -55,7 +55,9 @@ public class AiTests
         {
             var game = PlayOut(RandomGame(size, type, seed, PlayerKind.ComputerEasy, PlayerKind.ComputerMedium, PlayerKind.ComputerHard), seed);
             Assert.Equal(GamePhase.Over, game.Phase);
-            Assert.Equal(game.GoesPerPlayer, game.Turn);
+            // Either every go was played or the board ran out of room for new companies first.
+            Assert.Equal(game.Rounds, game.Turn);
+            Assert.True(game.Rounds == game.GoesPerPlayer || game.NoMoreCompanies);
         }
     }
 

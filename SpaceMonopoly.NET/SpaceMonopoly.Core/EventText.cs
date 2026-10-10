@@ -38,6 +38,10 @@ public static class EventText
             case SplitEvent s:
                 return $"{Co(s.Company)} shares split two for one: {currency.Format(s.OldValue)} → {currency.Format(s.NewValue)}.";
 
+            case NoMoreCompaniesEvent n:
+                return $"No more companies can be formed on {(game.Type == GameType.Tournament ? Name(n.Player) + "'s board" : "the board")}. " +
+                       $"The game will end after round {n.LastRound}.";
+
             case TradeEvent t:
                 return $"{Name(t.Player)} {(t.IsBuy ? "bought" : "sold")} {Currency.Number(t.Quantity)} {Co(t.Company)} " +
                        $"share{(t.Quantity == 1 ? "" : "s")} for {currency.Format(t.Total)}.";

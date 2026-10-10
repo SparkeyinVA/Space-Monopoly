@@ -208,8 +208,8 @@ public class RulesTests
 
     [Theory]
     [InlineData(GameType.Classic, 1, 80)]
-    [InlineData(GameType.Classic, 2, 80 * 2)]       // 80 each fits on the 192-square board
-    [InlineData(GameType.Classic, 3, 57 * 3)]       // 80 each wouldn't: 90% of 192 squares is 172, so 57 each
+    [InlineData(GameType.Classic, 2, 72 * 2)]       // 80 each wouldn't fit: 75% of the 192 squares is 144, so 72 each
+    [InlineData(GameType.Classic, 3, 48 * 3)]
     [InlineData(GameType.Tournament, 3, 80 * 3)]    // separate boards, so everyone gets the full 80
     public void Game_ends_after_the_right_number_of_goes(GameType type, int players, int expectedMoves)
     {
@@ -223,7 +223,9 @@ public class RulesTests
             moves++;
             game.EndTurn();
         }
-        Assert.Equal(expectedMoves, moves);
+        // The game can also end early, one round after the board runs out of room for new companies.
+        Assert.Equal(game.NoMoreCompanies ? game.Rounds * players : expectedMoves, moves);
+        Assert.InRange(moves, 1, expectedMoves);
     }
 
     [Fact]
@@ -231,9 +233,9 @@ public class RulesTests
     {
         var game = new Game(Small, new Board(Small.Width, Small.Height), [("A", PlayerKind.Human), ("B", PlayerKind.Human), ("C", PlayerKind.Human), ("D", PlayerKind.Human)],
             GameType.Classic, new GameRules(), seed: 1);
-        Assert.Equal(43, game.GoesPerPlayer); // 172 / 4
+        Assert.Equal(36, game.GoesPerPlayer); // 144 / 4
         Assert.True(game.GoesReduced);
-        Assert.False(NewGame(players: 2).GoesReduced);
+        Assert.False(NewGame(players: 1).GoesReduced);
     }
 
     [Theory]
@@ -266,5 +268,110 @@ public class RulesTests
         Play(game, new Pos(5, 5));
         Assert.Equal(6600 + 5 * 600, game.NetWorth(0));
         Assert.Equal("P0", game.Standings()[0].Name);
+    }
+
+    /// <summary>
+    /// Fills a board with company A apart from a few squares: (0,0) can still found a company because a star
+    /// is next to it, until a square is played at (1,0). The bottom row stays empty so play can continue.
+    /// </summary>
+    private static Game NearlyFullGame(int players)
+    {
+        var game = NewGame(players);
+        var board = game.Board;
+        foreach (var p in board.AllPositions()) board[p] = Board.CellForCompany(0);
+        board[0, 0] = Board.Empty;
+        board[1, 0] = Board.Empty;
+        board[0, 1] = Board.Diamond;
+        for (int x = 0; x < board.Width; x++) board[x, board.Height - 1] = Board.Empty;
+        game.Companies[0].Exists = true;
+        game.Companies[0].Value = 100;
+        return game;
+    }
+
+    [Fact]
+    public void Board_knows_when_no_company_can_ever_be_founded()
+    {
+        var board = new Board(4, 4);
+        Assert.True(board.CanStillFoundCompany());          // two empty squares: a star, then a company
+
+        foreach (var p in board.AllPositions()) board[p] = Board.CellForCompany(0);
+        board[2, 2] = Board.Empty;
+        Assert.False(board.CanStillFoundCompany());         // every empty square touches a company
+
+        board[0, 0] = Board.Empty;
+        board[1, 0] = Board.Circle;
+        board[0, 1] = Board.Circle;
+        Assert.True(board.CanStillFoundCompany());          // (0,0) touches only planets
+    }
+
+    [Fact]
+    public void Game_ends_one_round_after_the_round_in_which_no_more_companies_can_be_formed()
+    {
+        var game = NearlyFullGame(players: 3);
+        Assert.False(game.NoMoreCompanies);
+
+        // Player 0 fills (1,0), the last square next to the open one, in round 1.
+        var events = Play(game, new Pos(1, 0));
+        var warning = Assert.Single(events.OfType<NoMoreCompaniesEvent>());
+        Assert.Equal(2, warning.LastRound);
+        Assert.True(game.NoMoreCompanies);
+        Assert.Equal(2, game.Rounds);
+        game.EndTurn();
+
+        // The rest of round 1 (players 1 and 2), then all of round 2.
+        int moves = 0;
+        while (game.Phase != GamePhase.Over)
+        {
+            Assert.Empty(game.PlaceSquare(game.LegalChoices()[0]).OfType<NoMoreCompaniesEvent>());
+            moves++;
+            game.EndTurn();
+        }
+        Assert.Equal(2 + 3, moves);
+    }
+
+    [Fact]
+    public void Running_out_of_goes_still_ends_the_game_first()
+    {
+        var game = NearlyFullGame(players: 1);
+        var goes = game.GoesPerPlayer;
+        for (int i = 0; i < goes - 1; i++)
+        {
+            game.SetChoicesForTesting(new Pos(i % game.Board.Width, game.Board.Height - 1));
+            game.PlaceSquare(new Pos(i % game.Board.Width, game.Board.Height - 1));
+            game.EndTurn();
+            if (game.Phase == GamePhase.Over) break;
+        }
+        Assert.True(game.Rounds <= game.GoesPerPlayer);
+    }
+
+    [Fact]
+    public void In_a_tournament_any_board_filling_up_starts_the_final_round_for_everyone()
+    {
+        var game = NewGame(players: 2, type: GameType.Tournament);
+        var board = game.WorldFor(1).Board;
+        foreach (var p in board.AllPositions()) board[p] = Board.CellForCompany(0);
+        board[0, 0] = Board.Empty;
+        board[1, 0] = Board.Empty;
+        board[0, 1] = Board.Diamond;
+        for (int x = 0; x < board.Width; x++) board[x, board.Height - 1] = Board.Empty;
+        game.WorldFor(1).Companies[0].Exists = true;
+        game.WorldFor(1).Companies[0].Value = 100;
+
+        Play(game, new Pos(5, 5));          // player 0's board is still wide open
+        Assert.False(game.NoMoreCompanies);
+        game.EndTurn();
+
+        Assert.Single(Play(game, new Pos(1, 0)).OfType<NoMoreCompaniesEvent>());
+        Assert.Equal(2, game.Rounds);
+        game.EndTurn();
+
+        int moves = 0;
+        while (game.Phase != GamePhase.Over)
+        {
+            game.PlaceSquare(game.LegalChoices()[0]);
+            moves++;
+            game.EndTurn();
+        }
+        Assert.Equal(2, moves);            // both players' goes in round 2
     }
 }

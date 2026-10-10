@@ -31,7 +31,7 @@ internal static class HelpForms
         When a share price reaches ₲3,200 or more it is halved and every shareholder's shares are doubled.
 
         END OF GAME
-        Every player gets 80, 120 or 160 goes on the small, medium and large grids. If that many goes wouldn't fit on the board (for example 3 or more players on the small grid), everyone gets fewer so the board ends up nearly full; the game log says how many when the game starts. Net wealth is your money plus the worth of your shares. A good score earns a place in the high score table.
+        Every player gets 80, 120 or 160 goes on the small, medium and large grids. If that many goes wouldn't fit on the board (for example 2 or more players on the small grid), everyone gets fewer so that about three quarters of the board gets used; the game log says how many when the game starts. The game can also end early: once there's no room left anywhere on the board to form a new company, a warning appears, the current round is finished, and then everyone has one more round. In a tournament, this happens as soon as any player's board fills up. Net wealth is your money plus the worth of your shares. A good score earns a place in the high score table.
 
         MULTIPLAYER OPTIONS (Options > Preferences)
           • Force mergers / Force expansion make players take mergers or expansions when offered.

@@ -39,6 +39,16 @@ internal static class Dialogs
                 break;
             }
 
+            case NoMoreCompaniesEvent n:
+                MessageBox.Show(owner,
+                    $"There is no longer room on {(game.Type == GameType.Tournament ? Name(n.Player) + "'s board" : "the board")} to form a new company." +
+                    Environment.NewLine + Environment.NewLine +
+                    (n.LastRound == game.Turn + 1
+                        ? "This is the last round: the game ends when it is over."
+                        : $"The game will end after round {n.LastRound}: this round is finished, then everyone has one more go."),
+                    "No More Companies", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                break;
+
             case SplitEvent s:
             {
                 var table = Ui.Table(("Player", 160), ("Shares before", 140), ("Shares after", 140));

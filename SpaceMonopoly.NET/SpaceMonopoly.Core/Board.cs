@@ -126,6 +126,25 @@ public sealed class Board
             if (_cells[i] == from) _cells[i] = to;
     }
 
+    /// <summary>
+    /// True while a new company could still be founded somewhere, now or later. A company needs an empty
+    /// square with no company next to it that touches a planet or star. A star can only be placed on such a
+    /// square too, so a square with no company beside it next to another such square can still become one.
+    /// Company squares never go back to empty, so once this is false it stays false.
+    /// </summary>
+    public bool CanStillFoundCompany()
+    {
+        bool Open(Pos p) => this[p] == Empty && Survey(p).Companies.Count == 0;
+
+        foreach (var p in AllPositions())
+        {
+            if (!Open(p)) continue;
+            foreach (var n in Neighbours(p))
+                if (this[n] is Circle or Diamond || Open(n)) return true;
+        }
+        return false;
+    }
+
     /// <summary>What surrounds a square: counts of circles and diamonds plus the adjoining companies.</summary>
     public Surroundings Survey(Pos p)
     {

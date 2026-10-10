@@ -23,6 +23,12 @@ public sealed record SplitRow(int Player, BigInteger Before, BigInteger After);
 /// <summary>Shares worth 3,200 or more split two-for-one.</summary>
 public sealed record SplitEvent(int Company, long OldValue, long NewValue, IReadOnlyList<SplitRow> Rows) : GameEvent;
 
+/// <summary>
+/// No empty square left on the board could ever found a company, so the game will end after <see cref="LastRound"/>
+/// (the rest of this round plus one more, or sooner if the goes run out first).
+/// </summary>
+public sealed record NoMoreCompaniesEvent(int Player, int LastRound) : GameEvent;
+
 public sealed record TradeEvent(int Player, int Company, BigInteger Quantity, long Price, bool IsBuy) : GameEvent
 {
     public BigInteger Total => Quantity * Price;

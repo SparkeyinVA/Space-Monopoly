@@ -63,8 +63,10 @@ Settings and high scores are saved as JSON in `%LOCALAPPDATA%\SpaceMonopoly`.
   - A price of 6,400 or more now splits repeatedly instead of only once.
   - The game no longer hangs when fewer than five squares are left to offer.
 - Every player gets 80 / 120 / 160 goes on the small / medium / large grid. In the original, those goes were shared
-  by everyone. If that many goes wouldn't fit on the board (3 or more players on the small grid, for example),
-  everyone gets fewer so that about 90% of the empty squares are used. The game log shows the number when the game starts.
+  by everyone. If that many goes wouldn't fit on the board (2 or more players on the small grid, for example),
+  everyone gets fewer so that about 75% of the empty squares are used. The game log shows the number when the game starts.
+- The game can also end early. Once no empty square could ever form a new company, a warning appears. The current round
+  is finished, then one more round is played. In a tournament, this starts when it happens on any player's board.
 - Up to 5 companies on the small grid, 8 on the medium grid and 12 on the large grid. The original allowed 5 on every grid.
 - Money is in Galactic Bucks (₲) by default. Any currency name up to 16 characters can be set in Options > Preferences.
 - Money and share counts have no upper limit, because fortunes grow very large in long games.

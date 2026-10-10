@@ -442,7 +442,8 @@ internal sealed class MainForm : Form
         foreach (var e in events)
         {
             Log(EventText.Describe(game, e, Currency));
-            if (popups && e is CompanyFoundedEvent or MergerEvent or SplitEvent)
+            // The end-of-game warning matters to everyone, so it pops up even for computer players.
+            if ((popups && e is CompanyFoundedEvent or MergerEvent or SplitEvent) || e is NoMoreCompaniesEvent)
             {
                 RefreshAll();
                 Dialogs.ShowEvent(this, game, e, Currency);
@@ -540,7 +541,8 @@ internal sealed class MainForm : Form
             var player = game.CurrentPlayer;
             _boardView.ShowBoard(game.Board, inProgress && game.Phase == GamePhase.ChoosingSquare ? game.Choices : []);
             _goLabel.Text = inProgress
-                ? $"Round {game.Turn + 1} of {game.GoesPerPlayer}" + (game.Type == GameType.Tournament ? " (tournament)" : "")
+                ? (game.NoMoreCompanies && game.Turn + 1 == game.Rounds ? "Final round" : $"Round {game.Turn + 1} of {game.Rounds}")
+                  + (game.Type == GameType.Tournament ? " (tournament)" : "")
                 : $"Game over after round {game.Turn}";
             _playerLabel.Text = inProgress ? player.Name : $"Winner: {game.Standings()[0].Name}";
             _kindLabel.Text = inProgress ? player.Kind.Label() : "";
