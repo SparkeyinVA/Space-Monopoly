@@ -8,9 +8,9 @@ namespace SpaceMonopoly.WinForms;
 /// <summary>Currency, game rules, computer speed and Claude Code settings (Preferences.cpp in the original).</summary>
 internal sealed class PreferencesForm : Form
 {
-    private readonly ComboBox _unit = new() { Width = 80 };
-    private readonly RadioButton _prefix = new() { Text = "Before the amount (£100)", AutoSize = true };
-    private readonly RadioButton _postfix = new() { Text = "After the amount (100 £)", AutoSize = true };
+    private readonly ComboBox _unit = new() { Width = 150 };
+    private readonly RadioButton _prefix = new() { Text = "Before the amount (₲100)", AutoSize = true };
+    private readonly RadioButton _postfix = new() { Text = "After the amount (100 ₲)", AutoSize = true };
     private readonly TrackBar _speed = new() { Minimum = 0, Maximum = 20, TickFrequency = 2, Width = 260 };
     private readonly Label _speedLabel = Ui.Label("");
     private readonly CheckBox _popups = new() { Text = "Show pop-ups for computer players' new companies, mergers and splits", AutoSize = true };
@@ -41,8 +41,8 @@ internal sealed class PreferencesForm : Form
         Font = new Font("Segoe UI", 9f);
         ClientSize = new Size(560, 400);
 
-        _unit.Items.AddRange(["£", "$", "€", "¥", "₹", "Cr"]);
-        _unit.MaxLength = 3;
+        _unit.Items.AddRange(["₲", "$", "£", "€", "¥", "₹", "Cr", "Credits", "Galactic Bucks"]);
+        _unit.MaxLength = MaxUnitLength;
         _claudeModel.Items.AddRange(["sonnet", "opus", "haiku"]);
         _claudeEffort.Items.AddRange(["low", "medium", "high"]);
 
@@ -50,7 +50,7 @@ internal sealed class PreferencesForm : Form
 
         // General
         var general = Page("General");
-        var unitRow = Row(Ui.Label("Currency unit (1-3 characters):"), _unit);
+        var unitRow = Row(Ui.Label("Currency (₲ = Galactic Bucks):"), _unit);
         var speedRow = Row(Ui.Label("Computer player speed:"), _speed, _speedLabel);
         general.Controls.AddRange([unitRow, _prefix, _postfix, Spacer(), speedRow, _popups]);
         _speed.ValueChanged += (_, _) => _speedLabel.Text = _speed.Value == 0 ? "No pause" : $"{_speed.Value * 100} ms pause";
@@ -95,6 +95,8 @@ internal sealed class PreferencesForm : Form
         ResumeLayout(false);
         PerformLayout();
     }
+
+    private const int MaxUnitLength = 16;
 
     public AppSettings Settings { get; private set; }
 
@@ -159,9 +161,9 @@ internal sealed class PreferencesForm : Form
     private void Save()
     {
         string unit = _unit.Text.Trim();
-        if (unit.Length is < 1 or > 3)
+        if (unit.Length is < 1 or > MaxUnitLength)
         {
-            MessageBox.Show(this, "The currency unit must be 1 to 3 characters long.", "Preferences", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, $"The currency must be 1 to {MaxUnitLength} characters long.", "Preferences", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
         Settings = Settings with

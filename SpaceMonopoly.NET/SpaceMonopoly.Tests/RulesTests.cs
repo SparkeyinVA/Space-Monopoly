@@ -207,8 +207,10 @@ public class RulesTests
     }
 
     [Theory]
-    [InlineData(GameType.Classic, 3, 80)]
-    [InlineData(GameType.Tournament, 3, 80 * 3)]
+    [InlineData(GameType.Classic, 1, 80)]
+    [InlineData(GameType.Classic, 2, 80 * 2)]       // 80 each fits on the 192-square board
+    [InlineData(GameType.Classic, 3, 57 * 3)]       // 80 each wouldn't: 90% of 192 squares is 172, so 57 each
+    [InlineData(GameType.Tournament, 3, 80 * 3)]    // separate boards, so everyone gets the full 80
     public void Game_ends_after_the_right_number_of_goes(GameType type, int players, int expectedMoves)
     {
         var board = new Board(Small.Width, Small.Height);
@@ -222,6 +224,39 @@ public class RulesTests
             game.EndTurn();
         }
         Assert.Equal(expectedMoves, moves);
+    }
+
+    [Fact]
+    public void Goes_are_reduced_only_when_they_would_not_fit()
+    {
+        var game = new Game(Small, new Board(Small.Width, Small.Height), [("A", PlayerKind.Human), ("B", PlayerKind.Human), ("C", PlayerKind.Human), ("D", PlayerKind.Human)],
+            GameType.Classic, new GameRules(), seed: 1);
+        Assert.Equal(43, game.GoesPerPlayer); // 172 / 4
+        Assert.True(game.GoesReduced);
+        Assert.False(NewGame(players: 2).GoesReduced);
+    }
+
+    [Theory]
+    [InlineData(GridSize.Small, 5)]
+    [InlineData(GridSize.Medium, 8)]
+    [InlineData(GridSize.Large, 12)]
+    public void Company_limit_grows_with_the_grid(GridSize size, int limit)
+    {
+        var spec = GridSpec.For(size);
+        var board = new Board(spec.Width, spec.Height);
+        // A row of planets with gaps, so each square below one founds a separate company.
+        for (int i = 0; i < 14; i++) board[i * 2, 0] = Board.Circle;
+        var game = new Game(spec, board, [("P", PlayerKind.Human)], GameType.Classic, new GameRules(), seed: 1);
+
+        Assert.Equal(limit, game.Companies.Length);
+        for (int i = 0; i < 14 && i * 2 < spec.Width; i++)
+        {
+            game.SetChoicesForTesting(new Pos(i * 2, 1));
+            game.PlaceSquare(new Pos(i * 2, 1));
+            game.EndTurn();
+        }
+        Assert.All(game.Companies, c => Assert.True(c.Exists));
+        Assert.Equal(limit, game.Players[0].Shares.Length);
     }
 
     [Fact]

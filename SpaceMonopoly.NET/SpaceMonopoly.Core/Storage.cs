@@ -7,7 +7,13 @@ namespace SpaceMonopoly.Core;
 /// <summary>Preferences saved between sessions (replaces the old "Preferences" file).</summary>
 public sealed record AppSettings
 {
-    public string CurrencyUnit { get; init; } = "£";
+    /// <summary>Settings saved before version 1 used pounds by default; loading moves them to Galactic Bucks.</summary>
+    public const int CurrentVersion = 1;
+
+    /// <summary>0 when read from a file saved before versions were recorded.</summary>
+    public int Version { get; init; }
+
+    public string CurrencyUnit { get; init; } = Currency.GalacticBucks;
     public bool CurrencyPrefix { get; init; } = true;
     public GameRules Rules { get; init; } = new();
     public GridSize GridSize { get; init; } = GridSize.Small;
@@ -24,7 +30,7 @@ public sealed record AppSettings
     public Currency Currency => new(CurrencyUnit, CurrencyPrefix);
 }
 
-public sealed record HighScoreEntry(string Name, long Wealth, PlayerKind Kind, GameType GameType, DateTime Date);
+public sealed record HighScoreEntry(string Name, BigInteger Wealth, PlayerKind Kind, GameType GameType, DateTime Date);
 
 /// <summary>Top ten scores for each grid size (replaces the old encrypted "scores" file).</summary>
 public sealed class HighScoreTable
@@ -67,7 +73,7 @@ public sealed class Storage(string folder)
     private static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() },
+        Converters = { new JsonStringEnumConverter(), new BigIntegerConverter() },
     };
 
     public static Storage Default { get; } = new(Path.Combine(
@@ -78,7 +84,14 @@ public sealed class Storage(string folder)
     private string SettingsPath => Path.Combine(Folder, "settings.json");
     private string ScoresPath => Path.Combine(Folder, "highscores.json");
 
-    public AppSettings LoadSettings() => Load<AppSettings>(SettingsPath) ?? new AppSettings();
+    public AppSettings LoadSettings()
+    {
+        var settings = Load<AppSettings>(SettingsPath);
+        if (settings is null) return new AppSettings { Version = AppSettings.CurrentVersion };
+        if (settings.Version < 1 && settings.CurrencyUnit == "£")
+            settings = settings with { CurrencyUnit = Currency.GalacticBucks };
+        return settings with { Version = AppSettings.CurrentVersion };
+    }
 
     public void SaveSettings(AppSettings settings) => Save(SettingsPath, settings);
 
@@ -106,4 +119,19 @@ public sealed class Storage(string folder)
         File.WriteAllText(temp, JsonSerializer.Serialize(value, Options));
         File.Move(temp, path, overwrite: true);
     }
+}
+
+/// <summary>Writes big numbers as plain JSON numbers, so files from earlier versions still load.</summary>
+internal sealed class BigIntegerConverter : JsonConverter<BigInteger>
+{
+    public override BigInteger Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        string text = reader.TokenType == JsonTokenType.String
+            ? reader.GetString() ?? "0"
+            : System.Text.Encoding.UTF8.GetString(reader.HasValueSequence ? System.Buffers.BuffersExtensions.ToArray(reader.ValueSequence) : reader.ValueSpan.ToArray());
+        return BigInteger.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    public override void Write(Utf8JsonWriter writer, BigInteger value, JsonSerializerOptions options) =>
+        writer.WriteRawValue(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
 }

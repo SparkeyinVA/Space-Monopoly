@@ -39,7 +39,7 @@ public static class EventText
                 return $"{Co(s.Company)} shares split two for one: {currency.Format(s.OldValue)} → {currency.Format(s.NewValue)}.";
 
             case TradeEvent t:
-                return $"{Name(t.Player)} {(t.IsBuy ? "bought" : "sold")} {t.Quantity:N0} {Co(t.Company)} " +
+                return $"{Name(t.Player)} {(t.IsBuy ? "bought" : "sold")} {Currency.Number(t.Quantity)} {Co(t.Company)} " +
                        $"share{(t.Quantity == 1 ? "" : "s")} for {currency.Format(t.Total)}.";
 
             default:

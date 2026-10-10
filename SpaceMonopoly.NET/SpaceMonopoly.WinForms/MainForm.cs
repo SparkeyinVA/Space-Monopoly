@@ -29,8 +29,10 @@ internal sealed class MainForm : Form
     private readonly Label _kindLabel = Ui.Label("");
     private readonly Label _moneyLabel = Ui.Label("", 14f, FontStyle.Bold);
     private readonly Label _status = Ui.Label("");
-    private readonly Button[] _companyButtons = new Button[Company.Count];
-    private readonly Panel[] _companyDots = new Panel[Company.Count];
+    private readonly Button[] _companyButtons = new Button[Company.MaxCount];
+    private readonly Panel[] _companyDots = new Panel[Company.MaxCount];
+    private readonly TableLayoutPanel _companyGrid = new() { Dock = DockStyle.Fill, AutoSize = true };
+    private int _companySlots = -1;
     private readonly Button _endTurn;
     private readonly ListView _playerList = Ui.Table(("Player", 120), ("Net worth", 110));
     private readonly TextBox _log = new()
@@ -112,10 +114,7 @@ internal sealed class MainForm : Form
         info.Controls.AddRange([_goLabel, _playerLabel, _kindLabel, _moneyLabel, _status]);
 
         var companies = new GroupBox { Text = "Companies (click for details and trading)", Dock = DockStyle.Fill, AutoSize = true, Padding = new Padding(6) };
-        var companyGrid = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2 };
-        companyGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 26));
-        companyGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (int c = 0; c < Company.Count; c++)
+        for (int c = 0; c < Company.MaxCount; c++)
         {
             int index = c;
             var dot = new Panel { Width = 20, Height = 20, Margin = new Padding(2, 6, 2, 2), BackColor = Color.FromArgb(Company.Colors[c]) };
@@ -123,17 +122,14 @@ internal sealed class MainForm : Form
             var button = new Button
             {
                 Dock = DockStyle.Fill,
-                Height = 32,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Margin = new Padding(2),
             };
             button.Click += (_, _) => OpenCompany(index);
             _companyDots[c] = dot;
             _companyButtons[c] = button;
-            companyGrid.Controls.Add(dot, 0, c);
-            companyGrid.Controls.Add(button, 1, c);
         }
-        companies.Controls.Add(companyGrid);
+        companies.Controls.Add(_companyGrid);
 
         _playerList.DoubleClick += (_, _) => ShowPlayerDetails();
         var playersBox = new GroupBox { Text = "Players (double-click for details)", Dock = DockStyle.Fill, Padding = new Padding(6) };
@@ -163,6 +159,37 @@ internal sealed class MainForm : Form
     }
 
     private Currency Currency => _settings.Currency;
+
+    /// <summary>
+    /// Shows one button per company the grid size allows: one column for up to six,
+    /// two columns with the price on a second line for more.
+    /// </summary>
+    private void ShowCompanySlots(int count)
+    {
+        if (count == _companySlots) return;
+        _companySlots = count;
+        bool twoColumns = count > 6;
+        int perColumn = twoColumns ? (count + 1) / 2 : count;
+
+        _companyGrid.SuspendLayout();
+        _companyGrid.Controls.Clear();
+        _companyGrid.ColumnStyles.Clear();
+        _companyGrid.RowStyles.Clear();
+        _companyGrid.ColumnCount = twoColumns ? 4 : 2;
+        _companyGrid.RowCount = perColumn;
+        for (int col = 0; col < _companyGrid.ColumnCount / 2; col++)
+        {
+            _companyGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, LogicalToDeviceUnits(26)));
+            _companyGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        }
+        for (int c = 0; c < count; c++)
+        {
+            _companyButtons[c].Height = LogicalToDeviceUnits(twoColumns ? 42 : 32);
+            _companyGrid.Controls.Add(_companyDots[c], c / perColumn * 2, c % perColumn);
+            _companyGrid.Controls.Add(_companyButtons[c], c / perColumn * 2 + 1, c % perColumn);
+        }
+        _companyGrid.ResumeLayout(true);
+    }
     private GridSpec Spec => GridSpec.For(_settings.GridSize);
     private bool InProgress => _game is { Phase: not GamePhase.Over };
 
@@ -223,8 +250,11 @@ internal sealed class MainForm : Form
         _log.Clear();
 
         string who = string.Join(", ", _game.Players.Select(p => $"{p.Name} ({p.Kind.Label()})"));
+        string goes = $"Each player gets {_game.GoesPerPlayer} goes";
+        if (_game.GoesReduced)
+            goes += $" (fewer than the usual {Spec.GoesPerPlayer}, so that everyone's goes fit on the board)";
         Log($"New {_game.Type.ToString().ToLowerInvariant()} game on the {Spec.Label.ToLowerInvariant()} grid: {who}. " +
-            $"The game ends after {Spec.MaxTurns} goes{(_game.Type == GameType.Tournament ? " each" : "")}.");
+            $"{goes}, and there can be up to {Spec.Companies} companies.");
 
         await ContinueAsync();
     }
@@ -245,7 +275,7 @@ internal sealed class MainForm : Form
         var game = _game!;
         _boardView.AcceptClicks = false;
         RefreshAll();
-        Log($"Game over after go {game.Turn}.");
+        Log($"Game over after round {game.Turn}.");
         Dialogs.ShowGameOver(this, game, Currency);
 
         var fresh = new List<(GridSize, int)>();
@@ -435,7 +465,7 @@ internal sealed class MainForm : Form
         var world = game.WorldFor(p);
         var table = Ui.Table(("Company", 170), ("Shares", 120), ("Worth", 130));
         foreach (var c in world.Companies.Where(c => c.Exists))
-            table.Items.Add(Ui.Row(c.Name, player.Shares[c.Index].ToString("N0"), Currency.Format(player.Shares[c.Index] * c.Value)));
+            table.Items.Add(Ui.Row(c.Name, Currency.Number(player.Shares[c.Index]), Currency.Format(player.Shares[c.Index] * c.Value)));
         Dialogs.Show(this, $"Details of {player.Name}", SystemColors.Highlight,
             [
                 $"{player.Name} ({player.Kind.Label()})",
@@ -481,7 +511,7 @@ internal sealed class MainForm : Form
         if (game is null)
         {
             _boardView.ShowBoard(_board, []);
-            _goLabel.Text = $"{Spec.Label} grid — {Spec.MaxTurns} goes";
+            _goLabel.Text = $"{Spec.Label} grid — {Spec.GoesPerPlayer} goes each, {Spec.Companies} companies";
             _playerLabel.Text = "No game in progress";
             _kindLabel.Text = "";
             _moneyLabel.Text = "";
@@ -492,8 +522,8 @@ internal sealed class MainForm : Form
             var player = game.CurrentPlayer;
             _boardView.ShowBoard(game.Board, inProgress && game.Phase == GamePhase.ChoosingSquare ? game.Choices : []);
             _goLabel.Text = inProgress
-                ? $"Go {game.Turn + 1} of {game.Spec.MaxTurns}" + (game.Type == GameType.Tournament ? " (tournament)" : "")
-                : $"Game over after go {game.Turn}";
+                ? $"Round {game.Turn + 1} of {game.GoesPerPlayer}" + (game.Type == GameType.Tournament ? " (tournament)" : "")
+                : $"Game over after round {game.Turn}";
             _playerLabel.Text = inProgress ? player.Name : $"Winner: {game.Standings()[0].Name}";
             _kindLabel.Text = inProgress ? player.Kind.Label() : "";
             _moneyLabel.Text = inProgress ? Currency.Format(player.Money) : Currency.Format(game.Standings()[0].NetWorth);
@@ -505,11 +535,14 @@ internal sealed class MainForm : Form
                 SetStatus("Buy and sell shares by clicking a company, then press End Turn.");
         }
 
-        for (int c = 0; c < Company.Count; c++)
+        int slots = game?.Companies.Length ?? Spec.Companies;
+        ShowCompanySlots(slots);
+        string gap = slots > 6 ? Environment.NewLine : "   ";
+        for (int c = 0; c < slots; c++)
         {
             var company = game?.Companies[c];
             bool exists = company?.Exists == true;
-            _companyButtons[c].Text = exists ? $"{company!.Name}   {Currency.Format(company.Value)}" : Company.Names[c];
+            _companyButtons[c].Text = exists ? $"{company!.Name}{gap}{Currency.Format(company.Value)}" : Company.Names[c];
             _companyButtons[c].Enabled = exists && inProgress;
             _companyDots[c].Invalidate();
         }

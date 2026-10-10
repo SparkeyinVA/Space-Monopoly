@@ -5,7 +5,7 @@ internal static class HelpForms
 {
     private const string Rules = """
         THE AIM
-        The aim of Space Monopoly is to make money. Lots of it. You start with £6,000. When companies are created you can buy shares in them, and as companies grow and merge you make more money. At the end of the game the player with the most money (including the worth of their shares) is the winner. Any number can play, but 2-4 is recommended. Computer players can make up the numbers.
+        The aim of Space Monopoly is to make money. Lots of it. You start with ₲6,000 (Galactic Bucks — you can change the currency in Options > Preferences). When companies are created you can buy shares in them, and as companies grow and merge you make more money. At the end of the game the player with the most money (including the worth of their shares) is the winner. Any number can play, but 2-4 is recommended. Computer players can make up the numbers.
 
         GETTING STARTED
         Before you start you'll want a decent grid — one with lots of planets (circles) close together. Use Options > Create New Grid until you like the look of one, and pick a grid size. If it's your first game, use the small grid.
@@ -28,10 +28,10 @@ internal static class HelpForms
         If a square joins two companies they merge. The bigger company takes over the smaller one. If you hold shares in the smaller company, you're paid their full price in cash AND get the same number of shares in the bigger company, whose price rises by the smaller company's price. "Heck, I never said it was real life..."
 
         SHARE SPLITS
-        When a share price reaches £3,200 or more it is halved and every shareholder's shares are doubled.
+        When a share price reaches ₲3,200 or more it is halved and every shareholder's shares are doubled.
 
         END OF GAME
-        The game ends after 80, 120 or 160 goes on the small, medium and large grids. Net wealth is your money plus the worth of your shares. A good score earns a place in the high score table.
+        Every player gets 80, 120 or 160 goes on the small, medium and large grids. If that many goes wouldn't fit on the board (for example 3 or more players on the small grid), everyone gets fewer so the board ends up nearly full; the game log says how many when the game starts. Net wealth is your money plus the worth of your shares. A good score earns a place in the high score table.
 
         MULTIPLAYER OPTIONS (Options > Preferences)
           • Force mergers / Force expansion make players take mergers or expansions when offered.
@@ -39,9 +39,9 @@ internal static class HelpForms
           • Hide player details stops players looking at each other's holdings.
 
         HINTS AND TIPS (from the original author)
-          • Buy lots of shares in small (~£200) companies. They usually grow quickly, especially next to planets.
-          • Create companies close together. There's no point creating them on opposite sides of the board — they'll never merge. Remember there can only be 5 companies at once.
-          • In multiplayer games make sure it's you who creates the expensive (£1,100+) companies.
+          • Buy lots of shares in small (~₲200) companies. They usually grow quickly, especially next to planets.
+          • Create companies close together. There's no point creating them on opposite sides of the board — they'll never merge. Remember there can only be 5 companies at once on the small grid, 8 on the medium grid and 12 on the large grid.
+          • In multiplayer games make sure it's you who creates the expensive (₲1,100+) companies.
           • Think before merging: if your opponent holds more of the smaller company, they'll make more out of it.
           • Late on, sell shares in companies that can't grow and buy into the big companies, which are more likely to grow.
 
@@ -82,7 +82,7 @@ internal static class HelpForms
             [
                 $"Space Monopoly {version} — the freeware game of buying and selling shares.",
                 "Original game © 1998-2001 David Vivash (Borland C++ Builder), released under the GNU GPL v2.",
-                "Rebuilt for Windows 11 in C# / .NET with computer and Claude opponents.",
+                "Windows 11 edition by Jerame Chamberlain: rebuilt in C# / .NET with computer and Claude opponents.",
             ]);
     }
 }

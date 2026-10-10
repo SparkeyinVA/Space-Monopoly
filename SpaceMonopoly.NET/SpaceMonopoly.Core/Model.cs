@@ -37,12 +37,24 @@ public sealed record GameRules
 
 public sealed class Company
 {
-    public static readonly string[] Names = ["Atlantis Ltd.", "Betelguese", "Cannon Inc.", "Debenese", "Eridnus Corp."];
+    /// <summary>The first five are the original companies; the rest were added for the bigger grids.</summary>
+    public static readonly string[] Names =
+    [
+        "Atlantis Ltd.", "Betelguese", "Cannon Inc.", "Debenese", "Eridnus Corp.",
+        "Fomalhaut Mining", "Ganymede Group", "Hyperion Corp.", "Io Industries", "Jovian Freight",
+        "Kepler Ltd.", "Lyra Holdings",
+    ];
 
-    /// <summary>clRed, clLime, clYellow, clTeal, clBlue from CreateComs in Players.cpp.</summary>
-    public static readonly int[] Colors = [unchecked((int)0xFFFF0000), unchecked((int)0xFF00FF00), unchecked((int)0xFFFFFF00), unchecked((int)0xFF008080), unchecked((int)0xFF0000FF)];
+    /// <summary>clRed, clLime, clYellow, clTeal and clBlue from CreateComs in Players.cpp, then new colours.</summary>
+    public static readonly int[] Colors =
+    [
+        unchecked((int)0xFFFF0000), unchecked((int)0xFF00FF00), unchecked((int)0xFFFFFF00), unchecked((int)0xFF008080), unchecked((int)0xFF0000FF),
+        unchecked((int)0xFFFF8C00), unchecked((int)0xFF9400D3), unchecked((int)0xFFFF69B4), unchecked((int)0xFF8B4513), unchecked((int)0xFF00E5E5),
+        unchecked((int)0xFF808000), unchecked((int)0xFFC8C8C8),
+    ];
 
-    public const int Count = 5;
+    /// <summary>The most companies any grid size allows.</summary>
+    public const int MaxCount = 12;
 
     public Company(int index)
     {
@@ -51,8 +63,18 @@ public sealed class Company
 
     public int Index { get; }
     public string Name => Names[Index];
-    public char Letter => (char)('A' + Index);
+    public char Letter => LetterFor(Index);
     public int Argb => Colors[Index];
+
+    public static char LetterFor(int index) => (char)('A' + index);
+
+    /// <summary>True for light colours, where black text reads better than white.</summary>
+    public static bool UsesDarkText(int index)
+    {
+        int argb = Colors[index];
+        int r = (argb >> 16) & 0xFF, g = (argb >> 8) & 0xFF, b = argb & 0xFF;
+        return 0.299 * r + 0.587 * g + 0.114 * b > 140;
+    }
 
     /// <summary>Price of one share.</summary>
     public long Value { get; internal set; }
@@ -61,26 +83,28 @@ public sealed class Company
 
     internal Company Clone() => new(Index) { Value = Value, Exists = Exists };
 
-    public static Company[] CreateSet() => Enumerable.Range(0, Count).Select(i => new Company(i)).ToArray();
+    public static Company[] CreateSet(int count) => Enumerable.Range(0, count).Select(i => new Company(i)).ToArray();
 }
 
 public sealed class Player
 {
-    public Player(string name, PlayerKind kind, long money)
+    public Player(string name, PlayerKind kind, BigInteger money, int companies)
     {
         Name = name;
         Kind = kind;
         Money = money;
+        Shares = new BigInteger[companies];
     }
 
     public string Name { get; }
     public PlayerKind Kind { get; }
-    public long Money { get; internal set; }
-    public long[] Shares { get; private init; } = new long[Company.Count];
+    /// <summary>Money and share counts can grow past the range of a 64-bit number in long games.</summary>
+    public BigInteger Money { get; internal set; }
+    public BigInteger[] Shares { get; private init; }
 
     public bool IsHuman => Kind == PlayerKind.Human;
 
-    internal Player Clone() => new(Name, Kind, Money) { Shares = (long[])Shares.Clone() };
+    internal Player Clone() => new(Name, Kind, Money, 0) { Shares = (BigInteger[])Shares.Clone() };
 }
 
 /// <summary>A board plus its companies. Classic games share one world; tournament games give each player their own.</summary>
@@ -98,7 +122,7 @@ public sealed class World
     internal World Clone() => new(Board.Clone(), Companies.Select(c => c.Clone()).ToArray());
 }
 
-public sealed record Standing(int Player, string Name, PlayerKind Kind, long Money, long ShareWorth)
+public sealed record Standing(int Player, string Name, PlayerKind Kind, BigInteger Money, BigInteger ShareWorth)
 {
-    public long NetWorth => Money + ShareWorth;
+    public BigInteger NetWorth => Money + ShareWorth;
 }

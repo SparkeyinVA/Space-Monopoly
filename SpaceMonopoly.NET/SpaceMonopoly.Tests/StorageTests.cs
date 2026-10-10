@@ -45,13 +45,40 @@ public class StorageTests : IDisposable
     {
         Directory.CreateDirectory(_folder);
         File.WriteAllText(Path.Combine(_folder, "settings.json"), "{ not json");
-        Assert.Equal("£", new Storage(_folder).LoadSettings().CurrencyUnit);
+        Assert.Equal("₲", new Storage(_folder).LoadSettings().CurrencyUnit);
+    }
+
+    [Fact]
+    public void Old_settings_move_from_pounds_to_galactic_bucks_but_a_later_choice_of_pounds_is_kept()
+    {
+        Directory.CreateDirectory(_folder);
+        File.WriteAllText(Path.Combine(_folder, "settings.json"), """{ "CurrencyUnit": "£", "CurrencyPrefix": true }""");
+        var storage = new Storage(_folder);
+        var loaded = storage.LoadSettings();
+        Assert.Equal("₲", loaded.CurrencyUnit);
+
+        storage.SaveSettings(loaded with { CurrencyUnit = "£" });
+        Assert.Equal("£", storage.LoadSettings().CurrencyUnit);
     }
 
     [Fact]
     public void Currency_formats_with_separators()
     {
-        Assert.Equal("£1,234,567", Currency.Default.Format(1_234_567));
+        Assert.Equal("₲1,234,567", Currency.Default.Format(1_234_567));
+        Assert.Equal("1,000 Space Credits", new Currency("Space Credits", Prefix: false).Format(1000));
+        Assert.Equal("₲999,999,999,999,999", Currency.Default.Format(BigInteger.Pow(10, 15) - 1));
+        Assert.Equal("₲4.25 quintillion", Currency.Default.Format(BigInteger.Parse("4250000000000000000")));
+    }
+
+    [Fact]
+    public void High_scores_beyond_64_bits_round_trip()
+    {
+        var storage = new Storage(_folder);
+        var huge = BigInteger.Parse("123456789012345678901234567890");
+        var table = HighScoreTable.CreateDefault();
+        table.Add(GridSize.Large, new HighScoreEntry("Jerame", huge, PlayerKind.Human, GameType.Classic, DateTime.Today));
+        storage.SaveHighScores(table);
+        Assert.Equal(huge, storage.LoadHighScores().For(GridSize.Large)[0].Wealth);
         Assert.Equal("1,000 EUR", new Currency("EUR", Prefix: false).Format(1000));
     }
 }

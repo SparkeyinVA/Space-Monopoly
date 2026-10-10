@@ -29,7 +29,7 @@ internal static class Dialogs
             {
                 var table = Ui.Table(("Player", 140), ($"Shares in {Co(m.Survivor)}", 140), ($"Shares in {Co(m.Absorbed)}", 140), ("Money earned", 120));
                 foreach (var r in m.Rows)
-                    table.Items.Add(Ui.Row(Name(r.Player), r.SurvivorShares.ToString("N0"), r.AbsorbedShares.ToString("N0"), currency.Format(r.Profit)));
+                    table.Items.Add(Ui.Row(Name(r.Player), Currency.Number(r.SurvivorShares), Currency.Number(r.AbsorbedShares), currency.Format(r.Profit)));
                 Show(owner, "Merger", Color.FromArgb(Company.Colors[m.Survivor]),
                     [
                         $"There has been a merger between {Co(m.Survivor)} and {Co(m.Absorbed)}.",
@@ -43,7 +43,7 @@ internal static class Dialogs
             {
                 var table = Ui.Table(("Player", 160), ("Shares before", 140), ("Shares after", 140));
                 foreach (var r in s.Rows)
-                    table.Items.Add(Ui.Row(Name(r.Player), r.Before.ToString("N0"), r.After.ToString("N0")));
+                    table.Items.Add(Ui.Row(Name(r.Player), Currency.Number(r.Before), Currency.Number(r.After)));
                 Show(owner, "Share Split", Color.FromArgb(Company.Colors[s.Company]),
                     [
                         $"Shares in {Co(s.Company)} have split two for one.",
@@ -61,13 +61,13 @@ internal static class Dialogs
 
         var lines = new List<string>
         {
-            $"At go number {game.Turn} the game is finally over. Here are the final standings.",
+            $"After {game.Turn} round{(game.Turn == 1 ? "" : "s")} the game is finally over. Here are the final standings.",
             $"The winner is {winner.Name} with {currency.Format(winner.NetWorth)}!",
         };
 
         // Biggest company on the winner's board (the only board in a classic game).
         var world = game.WorldFor(winner.Player);
-        var biggest = Enumerable.Range(0, Company.Count)
+        var biggest = Enumerable.Range(0, world.Companies.Length)
             .Select(c => (Company: c, Size: world.Board.CompanySize(c)))
             .MaxBy(t => t.Size);
         if (biggest.Size > 0)

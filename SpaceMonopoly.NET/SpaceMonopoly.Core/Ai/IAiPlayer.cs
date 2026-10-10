@@ -3,7 +3,7 @@ namespace SpaceMonopoly.Core.Ai;
 public enum TradeAction { Buy, Sell }
 
 /// <summary>A trade a computer player wants to make. A quantity of 0 means "as many as possible" (buy max / sell all).</summary>
-public sealed record TradeOrder(TradeAction Action, int Company, long Quantity);
+public sealed record TradeOrder(TradeAction Action, int Company, BigInteger Quantity);
 
 /// <summary>A computer opponent. Each turn the game asks for a square, plays it, then asks for trades.</summary>
 public interface IAiPlayer
@@ -24,18 +24,18 @@ public static class TradeExecutor
         var done = new List<TradeEvent>();
         foreach (var order in orders)
         {
-            if (order.Company < 0 || order.Company >= Company.Count || !game.Companies[order.Company].Exists) continue;
+            if (order.Company < 0 || order.Company >= game.Companies.Length || !game.Companies[order.Company].Exists) continue;
 
             if (order.Action == TradeAction.Sell)
             {
-                long held = game.CurrentPlayer.Shares[order.Company];
-                long qty = order.Quantity <= 0 ? held : Math.Min(order.Quantity, held);
+                var held = game.CurrentPlayer.Shares[order.Company];
+                var qty = order.Quantity <= 0 ? held : BigInteger.Min(order.Quantity, held);
                 if (qty > 0) done.Add(game.Sell(order.Company, qty));
             }
             else
             {
-                long max = game.MaxBuy(order.Company);
-                long qty = order.Quantity <= 0 ? max : Math.Min(order.Quantity, max);
+                var max = game.MaxBuy(order.Company);
+                var qty = order.Quantity <= 0 ? max : BigInteger.Min(order.Quantity, max);
                 if (qty > 0) done.Add(game.Buy(order.Company, qty));
             }
         }

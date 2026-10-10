@@ -1,6 +1,7 @@
 # Space Monopoly for Windows 11
 
 A rebuild of David Vivash's 2001 freeware share-trading game in C# / .NET 9 WinForms, with computer opponents.
+Windows 11 edition by Jerame Chamberlain.
 The rules are ported from the original Borland C++ Builder source in `../sourceCode/spacemonopoly`.
 
 ## Running it
@@ -61,6 +62,13 @@ Settings and high scores are saved as JSON in `%LOCALAPPDATA%\SpaceMonopoly`.
   - Mergers in tournament games now convert your shares.
   - A price of 6,400 or more now splits repeatedly instead of only once.
   - The game no longer hangs when fewer than five squares are left to offer.
+- Every player gets 80 / 120 / 160 goes on the small / medium / large grid. In the original, those goes were shared
+  by everyone. If that many goes wouldn't fit on the board (3 or more players on the small grid, for example),
+  everyone gets fewer so that about 90% of the empty squares are used. The game log shows the number when the game starts.
+- Up to 5 companies on the small grid, 8 on the medium grid and 12 on the large grid. The original allowed 5 on every grid.
+- Money is in Galactic Bucks (₲) by default. Any currency name up to 16 characters can be set in Options > Preferences.
+- Money and share counts have no upper limit, because fortunes grow very large in long games.
+  Amounts of a quadrillion or more are shown in words, for example ₲4.25 quintillion.
 - Starting a new game keeps the planets and clears old companies. In the original, the code meant to clear the grid didn't run.
 - The high-score file is no longer "encrypted", and it now records the player type and game type.
 - New: computer and Claude players, a game log, and numbered squares on offer. The board scales to the window, and company letters are drawn on the board for colour-blind players.

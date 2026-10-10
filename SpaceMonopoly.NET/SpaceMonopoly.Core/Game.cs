@@ -25,6 +25,12 @@ public sealed class Game
     public const long CircleBonus = 500;
     public const long DiamondBonus = 100;
 
+    /// <summary>
+    /// When every player's goes wouldn't fit on the board, goes are reduced so that about this share of
+    /// the empty squares gets used. Some squares can't be offered late on, so filling all of them isn't possible.
+    /// </summary>
+    public const double BoardFillLimit = 0.9;
+
     private readonly World[] _worlds;
     private readonly Player[] _players;
     private readonly Random _rng;
@@ -33,7 +39,7 @@ public sealed class Game
     public Game(GridSpec spec, Board startingBoard, IEnumerable<(string Name, PlayerKind Kind)> players,
         GameType type, GameRules rules, int? seed = null)
     {
-        _players = players.Select(p => new Player(p.Name, p.Kind, StartingMoney)).ToArray();
+        _players = players.Select(p => new Player(p.Name, p.Kind, StartingMoney, spec.Companies)).ToArray();
         if (_players.Length == 0) throw new ArgumentException("A game needs at least one player.", nameof(players));
         if (startingBoard.Width != spec.Width || startingBoard.Height != spec.Height)
             throw new ArgumentException("Board size doesn't match the grid size.", nameof(startingBoard));
@@ -47,8 +53,10 @@ public sealed class Game
         var board = startingBoard.Clone();
         board.ClearPieces();
         _worlds = Type == GameType.Classic
-            ? [new World(board, Company.CreateSet())]
-            : _players.Select(_ => new World(board.Clone(), Company.CreateSet())).ToArray();
+            ? [new World(board, Company.CreateSet(spec.Companies))]
+            : _players.Select(_ => new World(board.Clone(), Company.CreateSet(spec.Companies))).ToArray();
+
+        GoesPerPlayer = GoesThatFit(spec, board.CountOf(Board.Empty), Type == GameType.Classic ? _players.Length : 1);
 
         BeginTurn();
     }
@@ -64,6 +72,7 @@ public sealed class Game
         _rng = new Random(other._rng.Next());
         CurrentPlayerIndex = other.CurrentPlayerIndex;
         Turn = other.Turn;
+        GoesPerPlayer = other.GoesPerPlayer;
         Phase = other.Phase;
     }
 
@@ -74,11 +83,23 @@ public sealed class Game
     public int CurrentPlayerIndex { get; private set; }
     public Player CurrentPlayer => _players[CurrentPlayerIndex];
 
-    /// <summary>
-    /// Zero-based "go" counter, shown as the turn number. In a classic game every player's move is one go;
-    /// in a tournament it counts rounds.
-    /// </summary>
+    /// <summary>Zero-based round counter. Each player has one go per round.</summary>
     public int Turn { get; private set; }
+
+    /// <summary>
+    /// How many goes each player gets: the grid size's number, or fewer if that many wouldn't fit on the board.
+    /// </summary>
+    public int GoesPerPlayer { get; }
+
+    /// <summary>True when the board was too small for the grid size's full number of goes.</summary>
+    public bool GoesReduced => GoesPerPlayer < Spec.GoesPerPlayer;
+
+    /// <summary>Goes per player that fit on a board with this many empty squares shared by this many players.</summary>
+    public static int GoesThatFit(GridSpec spec, int emptySquares, int playersSharingBoard)
+    {
+        int fit = (int)(emptySquares * BoardFillLimit) / Math.Max(1, playersSharingBoard);
+        return Math.Clamp(fit, 1, spec.GoesPerPlayer);
+    }
 
     public GamePhase Phase { get; private set; }
 
@@ -92,7 +113,15 @@ public sealed class Game
     public World WorldFor(int player) => Type == GameType.Classic ? _worlds[0] : _worlds[player];
 
     /// <summary>Moves left in the game that can affect the current world, including this one.</summary>
-    public int RemainingGoes => Math.Max(0, Spec.MaxTurns - Turn);
+    public int RemainingGoes
+    {
+        get
+        {
+            int rounds = Math.Max(0, GoesPerPlayer - Turn);
+            if (Type == GameType.Tournament) return rounds;
+            return Math.Max(0, rounds * _players.Length - CurrentPlayerIndex);
+        }
+    }
 
     public Game Clone() => new(this);
 
@@ -115,7 +144,7 @@ public sealed class Game
             if (board[p] != Board.Empty) continue;
             if (!canFound)
             {
-                // With all five companies in play, a square that would found a company can't be offered.
+                // With every company in play, a square that would found a company can't be offered.
                 var s = board.Survey(p);
                 if (s.NextToCircleOrDiamond && s.Companies.Count == 0) continue;
             }
@@ -137,9 +166,9 @@ public sealed class Game
         if (Phase != GamePhase.Trading) throw new InvalidOperationException("Choose a square before ending the turn.");
 
         CurrentPlayerIndex = (CurrentPlayerIndex + 1) % _players.Length;
-        if (Type == GameType.Classic || CurrentPlayerIndex == 0) Turn++;
+        if (CurrentPlayerIndex == 0) Turn++;
 
-        if (Turn >= Spec.MaxTurns)
+        if (Turn >= GoesPerPlayer)
         {
             Phase = GamePhase.Over;
             _choices = [];
@@ -302,7 +331,7 @@ public sealed class Game
         var dividends = new List<Payout>();
         foreach (int i in Recipients)
         {
-            long amount = _players[i].Shares[companyIndex] * added;
+            BigInteger amount = _players[i].Shares[companyIndex] * added;
             _players[i].Money += amount;
             if (amount > 0) dividends.Add(new Payout(i, amount));
         }
@@ -322,7 +351,7 @@ public sealed class Game
         foreach (int i in Recipients)
         {
             var pl = _players[i];
-            long profit = pl.Shares[absorbed] * absorbedValue;
+            BigInteger profit = pl.Shares[absorbed] * absorbedValue;
             rows.Add(new MergerRow(i, pl.Shares[survivor], pl.Shares[absorbed], profit));
             pl.Money += profit;
             pl.Shares[survivor] += pl.Shares[absorbed];
@@ -342,7 +371,7 @@ public sealed class Game
             var rows = new List<SplitRow>();
             foreach (int i in Recipients)
             {
-                long before = _players[i].Shares[companyIndex];
+                BigInteger before = _players[i].Shares[companyIndex];
                 _players[i].Shares[companyIndex] = before * 2;
                 rows.Add(new SplitRow(i, before, before * 2));
             }
@@ -355,24 +384,24 @@ public sealed class Game
     public bool CanTrade => Phase == GamePhase.Trading;
 
     /// <summary>How many shares the current player can afford.</summary>
-    public long MaxBuy(int company)
+    public BigInteger MaxBuy(int company)
     {
         var c = Companies[company];
         return c.Exists && c.Value > 0 ? CurrentPlayer.Money / c.Value : 0;
     }
 
     /// <summary>Validates a trade for the current player. Returns an error message or null.</summary>
-    public string? ValidateTrade(int company, long quantity, bool isBuy)
+    public string? ValidateTrade(int company, BigInteger quantity, bool isBuy)
     {
         if (!CanTrade) return "You can only trade after choosing a square.";
-        if (company < 0 || company >= Company.Count || !Companies[company].Exists) return "That company doesn't exist.";
+        if (company < 0 || company >= Companies.Length || !Companies[company].Exists) return "That company doesn't exist.";
         if (quantity < 1) return "Enter a number of shares.";
         if (isBuy && quantity > MaxBuy(company)) return "You can't buy that many shares, you fraudster.";
         if (!isBuy && quantity > CurrentPlayer.Shares[company]) return "You can't sell that many shares, you fraudster.";
         return null;
     }
 
-    public TradeEvent Buy(int company, long quantity)
+    public TradeEvent Buy(int company, BigInteger quantity)
     {
         if (ValidateTrade(company, quantity, isBuy: true) is string error) throw new InvalidOperationException(error);
         long price = Companies[company].Value;
@@ -381,7 +410,7 @@ public sealed class Game
         return new TradeEvent(CurrentPlayerIndex, company, quantity, price, IsBuy: true);
     }
 
-    public TradeEvent Sell(int company, long quantity)
+    public TradeEvent Sell(int company, BigInteger quantity)
     {
         if (ValidateTrade(company, quantity, isBuy: false) is string error) throw new InvalidOperationException(error);
         long price = Companies[company].Value;
@@ -392,17 +421,17 @@ public sealed class Game
 
     // ------------------------------------------------------------------ scoring
 
-    public long ShareWorth(int player)
+    public BigInteger ShareWorth(int player)
     {
         var companies = WorldFor(player).Companies;
-        long worth = 0;
-        for (int c = 0; c < Company.Count; c++)
+        BigInteger worth = 0;
+        for (int c = 0; c < companies.Length; c++)
             if (companies[c].Exists)
                 worth += _players[player].Shares[c] * companies[c].Value;
         return worth;
     }
 
-    public long NetWorth(int player) => _players[player].Money + ShareWorth(player);
+    public BigInteger NetWorth(int player) => _players[player].Money + ShareWorth(player);
 
     /// <summary>Final standings, richest first.</summary>
     public IReadOnlyList<Standing> Standings() =>
@@ -412,10 +441,10 @@ public sealed class Game
             .ToList();
 
     /// <summary>The player holding the most shares in a company, if anyone holds any.</summary>
-    public (int Player, long Shares)? MajorShareholder(int company)
+    public (int Player, BigInteger Shares)? MajorShareholder(int company)
     {
         int best = -1;
-        long most = 0;
+        BigInteger most = 0;
         for (int i = 0; i < _players.Length; i++)
         {
             if (Type == GameType.Tournament && i != CurrentPlayerIndex) continue;

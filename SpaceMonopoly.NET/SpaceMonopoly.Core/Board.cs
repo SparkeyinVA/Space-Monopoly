@@ -8,14 +8,17 @@ public readonly record struct Pos(int X, int Y)
 
 public enum GridSize { Small, Medium, Large }
 
-/// <summary>Board dimensions and game length for each grid size (from setGridSize in SMMain.cpp).</summary>
-public sealed record GridSpec(GridSize Size, int Width, int Height, int MaxTurns)
+/// <summary>
+/// Board dimensions, goes per player and company limit for each grid size. Sizes and goes come from
+/// setGridSize in SMMain.cpp, where the goes were shared by all players; here every player gets them.
+/// </summary>
+public sealed record GridSpec(GridSize Size, int Width, int Height, int GoesPerPlayer, int Companies)
 {
     public static GridSpec For(GridSize size) => size switch
     {
-        GridSize.Small => new(size, 16, 12, 80),
-        GridSize.Medium => new(size, 22, 18, 120),
-        GridSize.Large => new(size, 28, 24, 160),
+        GridSize.Small => new(size, 16, 12, 80, 5),
+        GridSize.Medium => new(size, 22, 18, 120, 8),
+        GridSize.Large => new(size, 28, 24, 160, 12),
         _ => throw new ArgumentOutOfRangeException(nameof(size)),
     };
 
@@ -24,7 +27,7 @@ public sealed record GridSpec(GridSize Size, int Width, int Height, int MaxTurns
 
 /// <summary>
 /// The playing grid. Cell values follow the original game: 0 = empty, 1 = circle (planet),
-/// 2 = diamond (star), 3..7 = company 0..4.
+/// 2 = diamond (star), 3 and up = company 0, 1, 2...
 /// </summary>
 public sealed class Board
 {
@@ -70,7 +73,7 @@ public sealed class Board
 
     public static int CellForCompany(int company) => company + FirstCompany;
 
-    /// <summary>Returns the company index (0-4) occupying a cell value, or -1.</summary>
+    /// <summary>Returns the company index occupying a cell value, or -1.</summary>
     public static int CompanyOf(int cell) => cell >= FirstCompany ? cell - FirstCompany : -1;
 
     public Board Clone() => new(this);

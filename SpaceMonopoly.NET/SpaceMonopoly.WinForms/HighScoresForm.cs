@@ -16,13 +16,13 @@ internal sealed class HighScoresForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoScaleDimensions = new SizeF(96f, 96f);
         Font = new Font("Segoe UI", 9f);
-        ClientSize = new Size(640, 380);
+        ClientSize = new Size(680, 380);
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
         foreach (var size in Enum.GetValues<GridSize>())
         {
             var page = new TabPage(GridSpec.For(size).Label) { Padding = new Padding(6) };
-            var list = Ui.Table(("#", 36), ("Name", 150), ("Net wealth", 130), ("Player type", 150), ("Game", 80), ("Date", 80));
+            var list = Ui.Table(("#", 44), ("Name", 170), ("Net wealth", 130), ("Player type", 150), ("Game", 80), ("Date", 80));
             var entries = table.For(size);
             for (int i = 0; i < entries.Count; i++)
             {
@@ -30,8 +30,10 @@ internal sealed class HighScoresForm : Form
                 var row = Ui.Row((i + 1).ToString(), e.Name, currency.Format(e.Wealth), e.Kind.Label(), e.GameType.ToString(), e.Date.ToShortDateString());
                 if (fresh.Contains((size, i)))
                 {
+                    // Colour and a star only: a separate bold font for the row isn't scaled with the
+                    // rest of the list on high-DPI screens, so it came out too big and was cut off.
                     row.BackColor = Color.MistyRose;
-                    row.Font = new Font(list.Font, FontStyle.Bold);
+                    row.ForeColor = Color.DarkRed;
                     row.Text = "★ " + row.Text;
                 }
                 list.Items.Add(row);

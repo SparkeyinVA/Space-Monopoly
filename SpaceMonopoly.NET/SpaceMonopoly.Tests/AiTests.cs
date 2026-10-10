@@ -55,7 +55,7 @@ public class AiTests
         {
             var game = PlayOut(RandomGame(size, type, seed, PlayerKind.ComputerEasy, PlayerKind.ComputerMedium, PlayerKind.ComputerHard), seed);
             Assert.Equal(GamePhase.Over, game.Phase);
-            Assert.Equal(game.Spec.MaxTurns, game.Turn);
+            Assert.Equal(game.GoesPerPlayer, game.Turn);
         }
     }
 

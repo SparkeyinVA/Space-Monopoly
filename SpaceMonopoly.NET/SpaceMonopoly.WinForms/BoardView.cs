@@ -172,9 +172,8 @@ internal sealed class BoardView : Control
         g.DrawRectangle(edge, box.X, box.Y, box.Width - 1, box.Height - 1);
 
         // The letter helps tell companies apart regardless of colour vision.
-        var text = ((char)('A' + company)).ToString();
-        bool lightCompany = company is 1 or 2; // lime and yellow
-        var textColor = lightCompany ? Color.FromArgb(160, 0, 0, 0) : Color.FromArgb(170, 255, 255, 255);
+        var text = Company.LetterFor(company).ToString();
+        var textColor = Company.UsesDarkText(company) ? Color.FromArgb(160, 0, 0, 0) : Color.FromArgb(170, 255, 255, 255);
         using var textBrush = new SolidBrush(textColor);
         using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
         g.DrawString(text, font, textBrush, r, format);

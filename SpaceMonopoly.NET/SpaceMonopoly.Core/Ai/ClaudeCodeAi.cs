@@ -16,8 +16,8 @@ public sealed class ClaudeCodeAi : IAiPlayer
 
         Rules:
         - Each turn you must pick one of the numbered squares offered on the map.
-        - A square next to a circle (o) or star (*) but not next to a company founds a new company, if one of the
-          five is still free. The founder gets 5 free shares plus cash equal to the starting share price.
+        - A square next to a circle (o) or star (*) but not next to a company founds a new company, if the
+          board's company limit hasn't been reached. The founder gets 5 free shares plus cash equal to the starting share price.
         - A square next to exactly one company grows it. The share price rises by 100, plus 500 for each circle
           next to the new square, plus 100 for each star next to it (stars get absorbed into the company).
           Every shareholder is paid a dividend of (shares held x price rise).
@@ -42,7 +42,7 @@ public sealed class ClaudeCodeAi : IAiPlayer
         """;
 
     internal const string Schema = """
-        {"type":"object","properties":{"choice":{"type":"integer","minimum":1,"maximum":5},"trades":{"type":"array","items":{"type":"object","properties":{"action":{"type":"string","enum":["buy","sell"]},"company":{"type":"string","enum":["A","B","C","D","E"]},"quantity":{"type":"integer","minimum":0}},"required":["action","company","quantity"],"additionalProperties":false}},"comment":{"type":"string"}},"required":["choice","trades","comment"],"additionalProperties":false}
+        {"type":"object","properties":{"choice":{"type":"integer","minimum":1,"maximum":5},"trades":{"type":"array","items":{"type":"object","properties":{"action":{"type":"string","enum":["buy","sell"]},"company":{"type":"string","enum":["A","B","C","D","E","F","G","H","I","J","K","L"]},"quantity":{"type":"integer","minimum":0}},"required":["action","company","quantity"],"additionalProperties":false}},"comment":{"type":"string"}},"required":["choice","trades","comment"],"additionalProperties":false}
         """;
 
     private readonly IClaudeRunner _runner;
@@ -107,9 +107,9 @@ public sealed class ClaudeCodeAi : IAiPlayer
             foreach (var t in list.EnumerateArray())
             {
                 string letter = t.GetProperty("company").GetString() ?? "";
-                if (letter.Length != 1 || letter[0] < 'A' || letter[0] > 'E') continue;
+                if (letter.Length != 1 || letter[0] < 'A' || letter[0] - 'A' >= game.Companies.Length) continue;
                 var action = t.GetProperty("action").GetString() == "sell" ? TradeAction.Sell : TradeAction.Buy;
-                long qty = Math.Max(0, t.GetProperty("quantity").GetInt64());
+                var qty = BigInteger.TryParse(t.GetProperty("quantity").GetRawText(), out var q) && q > 0 ? q : BigInteger.Zero;
                 trades.Add(new TradeOrder(action, letter[0] - 'A', qty));
             }
         }
@@ -121,19 +121,20 @@ public sealed class ClaudeCodeAi : IAiPlayer
     /// <summary>Describes the position, including a preview of what each offered square would do.</summary>
     internal static string BuildPrompt(Game game)
     {
-        var currency = Currency.Default;
+        var currency = Currency.Default; // Claude sees the default unit whatever the player has chosen.
         int me = game.CurrentPlayerIndex;
         var sb = new StringBuilder();
 
-        sb.AppendLine($"You are {game.Players[me].Name}. Go {game.Turn + 1} of {game.Spec.MaxTurns} " +
-                      $"({game.Type} game, {game.Spec.Width}x{game.Spec.Height} board).");
+        sb.AppendLine($"You are {game.Players[me].Name}. Round {game.Turn + 1} of {game.GoesPerPlayer} " +
+                      $"({game.Type} game, {game.Spec.Width}x{game.Spec.Height} board, {game.Players.Count} players, " +
+                      $"up to {game.Companies.Length} companies). Money is in Galactic Bucks (₲).");
         if (game.Type == GameType.Classic)
             sb.AppendLine("Classic game: everyone plays on this one board and shares its companies.");
         else
             sb.AppendLine("Tournament game: this board and its companies are yours alone; opponents have their own copies.");
         sb.AppendLine();
 
-        sb.AppendLine("Map (x across, y down). Key: . empty, o circle, * star, A-E company squares, 1-5 squares offered to you.");
+        sb.AppendLine($"Map (x across, y down). Key: . empty, o circle, * star, {Company.LetterFor(0)}-{Company.LetterFor(game.Companies.Length - 1)} company squares, 1-5 squares offered to you.");
         AppendMap(sb, game);
         sb.AppendLine();
 
@@ -201,7 +202,7 @@ public sealed class ClaudeCodeAi : IAiPlayer
                 char ch = choiceIndex.TryGetValue(pos, out int n) ? (char)('0' + n)
                     : cell == Board.Circle ? 'o'
                     : cell == Board.Diamond ? '*'
-                    : cell >= Board.FirstCompany ? (char)('A' + Board.CompanyOf(cell))
+                    : cell >= Board.FirstCompany ? Company.LetterFor(Board.CompanyOf(cell))
                     : '.';
                 sb.Append(ch);
             }

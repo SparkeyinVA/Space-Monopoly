@@ -49,7 +49,7 @@ public sealed class RuleBasedAi : IAiPlayer
 
             double score = Level switch
             {
-                AiLevel.Easy => sim.NetWorth(me),
+                AiLevel.Easy => (double)sim.NetWorth(me),
                 AiLevel.Medium => Heuristics.RelativeOutlook(sim, me, opponentWeight: 0.25),
                 _ => ScoreAfterTrades(sim, me),
             };
@@ -96,8 +96,8 @@ public sealed class RuleBasedAi : IAiPlayer
         if (affordable.Count > 0 && _rng.NextDouble() < 0.8)
         {
             var pick = affordable[_rng.Next(affordable.Count)];
-            long max = me.Money / pick.Value;
-            orders.Add(new TradeOrder(TradeAction.Buy, pick.Index, Math.Max(1, max / 2)));
+            var max = me.Money / pick.Value;
+            orders.Add(new TradeOrder(TradeAction.Buy, pick.Index, BigInteger.Max(1, max / 2)));
         }
         return orders;
     }
@@ -110,19 +110,19 @@ public sealed class RuleBasedAi : IAiPlayer
     {
         var orders = new List<TradeOrder>();
         var me = game.CurrentPlayer;
-        var ratio = Heuristics.ReturnPerPound(game, game.CurrentWorld);
-        var ranked = Enumerable.Range(0, Company.Count)
+        var ratio = Heuristics.ReturnPerUnit(game, game.CurrentWorld);
+        var ranked = Enumerable.Range(0, game.Companies.Length)
             .Where(c => game.Companies[c].Exists && ratio[c] > 0)
             .OrderByDescending(c => ratio[c])
             .ToList();
         if (ranked.Count == 0) return orders;
 
         double bestRatio = ratio[ranked[0]];
-        long cash = me.Money;
+        var cash = me.Money;
 
         if (sellThreshold is double threshold)
         {
-            for (int c = 0; c < Company.Count; c++)
+            for (int c = 0; c < game.Companies.Length; c++)
             {
                 if (!game.Companies[c].Exists || me.Shares[c] == 0 || c == ranked[0]) continue;
                 if (ratio[c] < bestRatio * threshold)
@@ -137,7 +137,7 @@ public sealed class RuleBasedAi : IAiPlayer
         {
             long price = game.Companies[c].Value;
             if (price > cash) continue;
-            long qty = cash / price;
+            var qty = cash / price;
             orders.Add(new TradeOrder(TradeAction.Buy, c, qty));
             cash -= qty * price;
         }

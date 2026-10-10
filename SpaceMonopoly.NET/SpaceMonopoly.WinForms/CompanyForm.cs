@@ -18,8 +18,8 @@ internal sealed class CompanyForm : Form
     private readonly Label _major = Ui.Label("");
     private readonly Label _owned = Ui.Label("");
     private readonly Label _canBuy = Ui.Label("");
-    private readonly NumericUpDown _buyQty = new() { Minimum = 0, Maximum = long.MaxValue, Width = 110, ThousandsSeparator = true };
-    private readonly NumericUpDown _sellQty = new() { Minimum = 0, Maximum = long.MaxValue, Width = 110, ThousandsSeparator = true };
+    private readonly NumericUpDown _buyQty = new() { Minimum = 0, Maximum = decimal.MaxValue, Width = 150, ThousandsSeparator = true };
+    private readonly NumericUpDown _sellQty = new() { Minimum = 0, Maximum = decimal.MaxValue, Width = 150, ThousandsSeparator = true };
     private readonly Button _buy, _maxBuy, _sell, _sellAll;
 
     public CompanyForm(Game game, int company, Currency currency, bool canTrade, Action<TradeEvent> onTrade)
@@ -59,9 +59,9 @@ internal sealed class CompanyForm : Form
         _canBuy.AutoSize = false;
         _canBuy.Height = 24;
 
-        _buy = Ui.Button("Buy >>>", (_, _) => Trade(isBuy: true, (long)_buyQty.Value));
+        _buy = Ui.Button("Buy >>>", (_, _) => Trade(isBuy: true, new BigInteger(_buyQty.Value)));
         _maxBuy = Ui.Button("Max Buy", (_, _) => Trade(isBuy: true, _game.MaxBuy(_company)));
-        _sell = Ui.Button("Sell >>>", (_, _) => Trade(isBuy: false, (long)_sellQty.Value));
+        _sell = Ui.Button("Sell >>>", (_, _) => Trade(isBuy: false, new BigInteger(_sellQty.Value)));
         _sellAll = Ui.Button("Sell All", (_, _) => Trade(isBuy: false, _game.CurrentPlayer.Shares[_company]));
 
         var trade = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 4, Padding = new Padding(12, 4, 12, 4) };
@@ -99,9 +99,10 @@ internal sealed class CompanyForm : Form
     private void Step(int delta)
     {
         int c = _company;
-        for (int i = 0; i < Company.Count; i++)
+        int count = _game.Companies.Length;
+        for (int i = 0; i < count; i++)
         {
-            c = (c + delta + Company.Count) % Company.Count;
+            c = (c + delta + count) % count;
             if (_game.Companies[c].Exists)
             {
                 ShowCompany(c);
@@ -110,7 +111,7 @@ internal sealed class CompanyForm : Form
         }
     }
 
-    private void Trade(bool isBuy, long quantity)
+    private void Trade(bool isBuy, BigInteger quantity)
     {
         if (_game.ValidateTrade(_company, quantity, isBuy) is string error)
         {
@@ -129,20 +130,20 @@ internal sealed class CompanyForm : Form
         var me = _game.CurrentPlayer;
 
         _header.BackColor = Color.FromArgb(c.Argb);
-        _title.ForeColor = company is 1 or 2 ? Color.Black : Color.White;
+        _title.ForeColor = Company.UsesDarkText(company) ? Color.Black : Color.White;
         _title.Text = c.Name;
         _price.Text = _currency.Format(c.Value);
         int size = _game.Board.CompanySize(company);
         _size.Text = $"{size} square{(size == 1 ? "" : "s")}";
 
         _major.Text = _game.MajorShareholder(company) is var (player, shares)
-            ? $"{_game.Players[player].Name} with {shares:N0} share{(shares == 1 ? "" : "s")}."
+            ? $"{_game.Players[player].Name} with {Currency.Number(shares)} share{(shares == 1 ? "" : "s")}."
             : "Nobody.";
 
-        long owned = me.Shares[company];
-        long max = _game.MaxBuy(company);
-        _owned.Text = $"{me.Name} owns {owned:N0} share{(owned == 1 ? "" : "s")} in this company.";
-        _canBuy.Text = $"{me.Name} has {_currency.Format(me.Money)} and can buy {(max > 1 ? "up to " : "")}{max:N0} share{(max == 1 ? "" : "s")}.";
+        var owned = me.Shares[company];
+        var max = _game.MaxBuy(company);
+        _owned.Text = $"{me.Name} owns {Currency.Number(owned)} share{(owned == 1 ? "" : "s")} in this company.";
+        _canBuy.Text = $"{me.Name} has {_currency.Format(me.Money)} and can buy {(max > 1 ? "up to " : "")}{Currency.Number(max)} share{(max == 1 ? "" : "s")}.";
 
         _buyQty.Value = 0;
         _sellQty.Value = 0;

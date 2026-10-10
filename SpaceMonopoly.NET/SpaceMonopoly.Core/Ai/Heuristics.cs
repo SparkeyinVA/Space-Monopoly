@@ -23,11 +23,11 @@ internal static class Heuristics
     {
         var board = world.Board;
         var companies = world.Companies;
-        var growth = new double[Company.Count];
+        var growth = new double[companies.Length];
         double p = PlayProbability(game, board);
         if (p == 0) return growth;
 
-        var sizes = Enumerable.Range(0, Company.Count).Select(board.CompanySize).ToArray();
+        var sizes = Enumerable.Range(0, companies.Length).Select(board.CompanySize).ToArray();
 
         foreach (var cell in board.AllPositions())
         {
@@ -56,17 +56,17 @@ internal static class Heuristics
             }
         }
 
-        for (int c = 0; c < Company.Count; c++)
+        for (int c = 0; c < companies.Length; c++)
             if (!companies[c].Exists) growth[c] = 0;
         return growth;
     }
 
-    /// <summary>Expected growth per pound invested in each company.</summary>
-    public static double[] ReturnPerPound(Game game, World world)
+    /// <summary>Expected growth per unit of money invested in each company.</summary>
+    public static double[] ReturnPerUnit(Game game, World world)
     {
         var growth = GrowthPerShare(game, world);
-        var ratio = new double[Company.Count];
-        for (int c = 0; c < Company.Count; c++)
+        var ratio = new double[growth.Length];
+        for (int c = 0; c < growth.Length; c++)
         {
             var company = world.Companies[c];
             ratio[c] = company.Exists && company.Value > 0 ? growth[c] / company.Value : 0;
@@ -79,18 +79,18 @@ internal static class Heuristics
     {
         var world = game.WorldFor(player);
         var growth = GrowthPerShare(game, world);
-        var ratio = ReturnPerPound(game, world);
+        var ratio = ReturnPerUnit(game, world);
         var pl = game.Players[player];
 
         double expected = 0;
-        for (int c = 0; c < Company.Count; c++)
-            expected += pl.Shares[c] * growth[c];
+        for (int c = 0; c < growth.Length; c++)
+            expected += (double)pl.Shares[c] * growth[c];
 
         // Cash can still be invested at the best available return.
         double bestRatio = ratio.Max();
-        expected += pl.Money * bestRatio * 0.8;
+        expected += (double)pl.Money * bestRatio * 0.8;
 
-        return game.NetWorth(player) + expected;
+        return (double)game.NetWorth(player) + expected;
     }
 
     /// <summary>How well a player is doing compared with the strongest opponent.</summary>
