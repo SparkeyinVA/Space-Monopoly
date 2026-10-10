@@ -109,11 +109,14 @@ public sealed record MovePreview(
                 break;
         }
 
-        var gains = NetWorthChange.Select((amount, i) => (amount, i)).Where(t => t.amount != 0)
+        // With "Hide player details" on, only your own change is shown.
+        var gains = NetWorthChange.Select((amount, i) => (amount, i))
+            .Where(t => t.amount != 0 && (!game.Rules.HideDetails || t.i == game.CurrentPlayerIndex))
             .Select(t => $"{(t.i == game.CurrentPlayerIndex ? "You" : game.Players[t.i].Name)} {(t.amount > 0 ? "+" : "")}{currency.Format(t.amount)}")
             .ToList();
         if (gains.Count > 0) lines.Add("Net worth: " + string.Join(" · ", gains));
-        else if (Kind is MoveKind.Grow or MoveKind.Merge) lines.Add("Nobody holds shares in it yet, so nobody gains now.");
+        else if (Kind is MoveKind.Grow or MoveKind.Merge)
+            lines.Add(game.Rules.HideDetails ? "You hold no shares in it, so you gain nothing now." : "Nobody holds shares in it yet, so nobody gains now.");
         if (Allowed is not null) lines.Add("Not allowed: " + Allowed);
         return string.Join(Environment.NewLine, lines);
     }

@@ -60,4 +60,48 @@ public class MovePreviewTests
         Assert.Equal("M", merge.Label);
         Assert.Contains("takes over", merge.Summary(Currency.Default));
     }
+
+    [Fact]
+    public void Previews_and_copies_do_not_change_what_the_real_game_deals_next()
+    {
+        Game Make()
+        {
+            var spec = GridSpec.For(GridSize.Small);
+            var board = new Board(spec.Width, spec.Height);
+            board.Randomise(new Random(4));
+            return new Game(spec, board, [("A", PlayerKind.Human), ("B", PlayerKind.Human)], GameType.Classic, new GameRules(), seed: 4);
+        }
+
+        var plain = Make();
+        var previewed = Make();
+        for (int turn = 0; turn < 10; turn++)
+        {
+            MovePreview.ForChoices(previewed);
+            previewed.Clone().Clone();
+            Assert.Equal(plain.Choices, previewed.Choices);
+
+            plain.PlaceSquare(plain.Choices[0]);
+            previewed.PlaceSquare(previewed.Choices[0]);
+            plain.EndTurn();
+            previewed.EndTurn();
+        }
+    }
+
+    [Fact]
+    public void With_hidden_details_only_your_own_gain_is_shown()
+    {
+        var game = RulesTests.NewGame(players: 2, rules: new GameRules { HideDetails = true }, circles: [new Pos(2, 0)]);
+        game.SetChoicesForTesting(new Pos(2, 1));
+        game.PlaceSquare(new Pos(2, 1));        // P0 founds A
+        game.EndTurn();
+        game.SetChoicesForTesting(new Pos(3, 1));
+        game.PlaceSquare(new Pos(3, 1));        // P1 grows it
+        game.Buy(0, 1);
+        game.EndTurn();
+
+        game.SetChoicesForTesting(new Pos(4, 1));
+        string details = MovePreview.For(game, new Pos(4, 1)).Details(game, Currency.Default);
+        Assert.Contains("You +", details);
+        Assert.DoesNotContain("P1", details);
+    }
 }

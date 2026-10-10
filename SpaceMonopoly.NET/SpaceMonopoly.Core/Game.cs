@@ -34,7 +34,7 @@ public sealed class Game
 
     private readonly World[] _worlds;
     private readonly Player[] _players;
-    private readonly Random _rng;
+    private readonly GameRandom _rng;
     private List<Pos> _choices = [];
 
     public Game(GridSpec spec, Board startingBoard, IEnumerable<(string Name, PlayerKind Kind)> players,
@@ -49,7 +49,7 @@ public sealed class Game
         // Tournament only makes sense with two or more players (Players.cpp).
         Type = _players.Length == 1 ? GameType.Classic : type;
         Rules = rules;
-        _rng = seed is int s ? new Random(s) : new Random();
+        _rng = GameRandom.FromSeed(seed);
 
         var board = startingBoard.Clone();
         board.ClearPieces();
@@ -70,7 +70,7 @@ public sealed class Game
         _players = other._players.Select(p => p.Clone()).ToArray();
         _worlds = other._worlds.Select(w => w.Clone()).ToArray();
         _choices = [.. other._choices];
-        _rng = new Random(other._rng.Next());
+        _rng = other._rng.Fork();
         CurrentPlayerIndex = other.CurrentPlayerIndex;
         Turn = other.Turn;
         GoesPerPlayer = other.GoesPerPlayer;
