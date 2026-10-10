@@ -31,7 +31,17 @@ internal sealed class MainForm : Form
     private readonly Label _status = Ui.Label("");
     private readonly Button[] _companyButtons = new Button[Company.MaxCount];
     private readonly Panel[] _companyDots = new Panel[Company.MaxCount];
-    private readonly TableLayoutPanel _companyGrid = new() { Dock = DockStyle.Fill, AutoSize = true };
+    // Not auto-sized: an auto-sized table grows to fit the button text and pushes the second column out of view.
+    private readonly TableLayoutPanel _companyGrid = new() { Dock = DockStyle.Fill };
+    private readonly TableLayoutPanel _side = new()
+    {
+        Dock = DockStyle.Right,
+        Width = 360,
+        ColumnCount = 1,
+        Padding = new Padding(8),
+        BackColor = SystemColors.Control,
+    };
+    private readonly GroupBox _companyBox = new() { Text = "Companies (click for details and trading)", Dock = DockStyle.Fill, Padding = new Padding(6) };
     private int _companySlots = -1;
     private readonly Button _endTurn;
     private readonly ListView _playerList = Ui.Table(("Player", 120), ("Net worth", 110));
@@ -57,7 +67,7 @@ internal sealed class MainForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoScaleDimensions = new SizeF(96f, 96f);
         Font = new Font("Segoe UI", 9f);
-        ClientSize = new Size(1100, 760);
+        ClientSize = new Size(1100, 900);
         MinimumSize = new Size(760, 560);
         StartPosition = FormStartPosition.CenterScreen;
 
@@ -87,33 +97,28 @@ internal sealed class MainForm : Form
         _endTurn = new Button
         {
             Text = "End Turn",
-            Dock = DockStyle.Top,
-            Height = 40,
+            Dock = DockStyle.Fill,
             Font = new Font("Segoe UI", 11f, FontStyle.Bold),
             Margin = new Padding(4, 8, 4, 8),
         };
         _endTurn.Click += async (_, _) => await HumanEndsTurnAsync();
 
-        var side = new TableLayoutPanel
-        {
-            Dock = DockStyle.Right,
-            Width = 360,
-            ColumnCount = 1,
-            Padding = new Padding(8),
-            BackColor = SystemColors.Control,
-        };
+        var side = _side;
+        side.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        // Fixed rows are given their heights after DPI scaling.
         side.RowStyles.Add(new RowStyle(SizeType.AutoSize));       // info
-        side.RowStyles.Add(new RowStyle(SizeType.AutoSize));       // companies
-        side.RowStyles.Add(new RowStyle(SizeType.AutoSize));       // end turn
-        side.RowStyles.Add(new RowStyle(SizeType.Absolute, 120));  // players
+        side.RowStyles.Add(new RowStyle(SizeType.Absolute));       // companies
+        side.RowStyles.Add(new RowStyle(SizeType.Absolute));       // end turn
+        side.RowStyles.Add(new RowStyle(SizeType.Absolute));       // players (sized in SizePlayersBox)
         side.RowStyles.Add(new RowStyle(SizeType.Percent, 100));   // log
 
         var info = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
+        // Long labels wrap instead of widening the side panel past the window edge.
+        _goLabel.MaximumSize = _playerLabel.MaximumSize = new Size(330, 0);
         _status.MaximumSize = new Size(300, 0);
         _status.ForeColor = Color.FromArgb(40, 60, 140);
         info.Controls.AddRange([_goLabel, _playerLabel, _kindLabel, _moneyLabel, _status]);
 
-        var companies = new GroupBox { Text = "Companies (click for details and trading)", Dock = DockStyle.Fill, AutoSize = true, Padding = new Padding(6) };
         for (int c = 0; c < Company.MaxCount; c++)
         {
             int index = c;
@@ -124,13 +129,14 @@ internal sealed class MainForm : Form
             {
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft,
+                AutoEllipsis = true,
                 Margin = new Padding(2),
             };
             button.Click += (_, _) => OpenCompany(index);
             _companyDots[c] = dot;
             _companyButtons[c] = button;
         }
-        companies.Controls.Add(_companyGrid);
+        _companyBox.Controls.Add(_companyGrid);
 
         _playerList.DoubleClick += (_, _) => ShowPlayerDetails();
         var playersBox = new GroupBox { Text = "Players (double-click for details)", Dock = DockStyle.Fill, Padding = new Padding(6) };
@@ -140,7 +146,7 @@ internal sealed class MainForm : Form
         logBox.Controls.Add(_log);
 
         side.Controls.Add(info, 0, 0);
-        side.Controls.Add(companies, 0, 1);
+        side.Controls.Add(_companyBox, 0, 1);
         side.Controls.Add(_endTurn, 0, 2);
         side.Controls.Add(playersBox, 0, 3);
         side.Controls.Add(logBox, 0, 4);
@@ -152,11 +158,21 @@ internal sealed class MainForm : Form
         Controls.Add(menu);
         ResumeLayout(false);
         PerformLayout();
+        _side.RowStyles[2].Height = LogicalToDeviceUnits(56);
 
         _board = NewBoard(_settings.GridSize);
         RefreshAll();
         Log("Welcome to Space Monopoly! Choose Game > New Game to start. " +
             "Use Options > Create New Grid until you like the look of the board — lots of planets close together is best.");
+    }
+
+    /// <summary>Keeps the window on screen: it opens tall enough for twelve companies and eight players when there is room.</summary>
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        var area = Screen.FromControl(this).WorkingArea;
+        Size = new Size(Math.Min(Width, area.Width), Math.Min(Height, area.Height));
+        Location = new Point(area.Left + (area.Width - Width) / 2, area.Top + (area.Height - Height) / 2);
     }
 
     private Currency Currency => _settings.Currency;
@@ -183,9 +199,14 @@ internal sealed class MainForm : Form
             _companyGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, LogicalToDeviceUnits(26)));
             _companyGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         }
+        int rowHeight = LogicalToDeviceUnits(twoColumns ? 42 : 36);
+        for (int row = 0; row < perColumn; row++)
+            _companyGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, rowHeight));
+        // Measured from the top and padding, as the box may not have been laid out yet.
+        _side.RowStyles[1].Height = perColumn * rowHeight + _companyBox.DisplayRectangle.Top + _companyBox.Padding.Bottom
+                                    + LogicalToDeviceUnits(2) + _companyBox.Margin.Vertical;
         for (int c = 0; c < count; c++)
         {
-            _companyButtons[c].Height = LogicalToDeviceUnits(twoColumns ? 42 : 32);
             _companyDots[c].Size = LogicalToDeviceUnits(new Size(20, 20));
             _companyGrid.Controls.Add(_companyDots[c], c / perColumn * 2, c % perColumn);
             _companyGrid.Controls.Add(_companyButtons[c], c / perColumn * 2 + 1, c % perColumn);
@@ -568,5 +589,18 @@ internal sealed class MainForm : Form
             }
         }
         _playerList.EndUpdate();
+        SizePlayersBox(game?.Players.Count ?? 0);
+    }
+
+    /// <summary>Makes the players box tall enough to show every player without scrolling.</summary>
+    private void SizePlayersBox(int players)
+    {
+        int rows = Math.Max(players, 3);
+        int itemHeight = _playerList.Items.Count > 0 ? _playerList.GetItemRect(0).Height : _playerList.Font.Height + LogicalToDeviceUnits(4);
+        int headerHeight = _playerList.Items.Count > 0 ? _playerList.GetItemRect(0).Top : itemHeight + LogicalToDeviceUnits(4);
+        int listHeight = headerHeight + rows * itemHeight + (_playerList.Height - _playerList.ClientSize.Height) + LogicalToDeviceUnits(4);
+        var box = _playerList.Parent!;
+        int height = listHeight + box.DisplayRectangle.Top + box.Padding.Bottom + LogicalToDeviceUnits(2) + box.Margin.Vertical;
+        if ((int)_side.RowStyles[3].Height != height) _side.RowStyles[3].Height = height;
     }
 }
