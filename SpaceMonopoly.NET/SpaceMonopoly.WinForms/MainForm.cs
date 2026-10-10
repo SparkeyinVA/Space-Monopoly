@@ -117,7 +117,8 @@ internal sealed class MainForm : Form
         for (int c = 0; c < Company.MaxCount; c++)
         {
             int index = c;
-            var dot = new Panel { Width = 20, Height = 20, Margin = new Padding(2, 6, 2, 2), BackColor = Color.FromArgb(Company.Colors[c]) };
+            // Sized in ShowCompanySlots: these are added after the form has been scaled for the screen's DPI.
+            var dot = new Panel { Anchor = AnchorStyles.None, Margin = Padding.Empty, BackColor = Color.FromArgb(Company.Colors[c]) };
             dot.Paint += (_, e) => PaintDot(e.Graphics, index, dot.ClientRectangle);
             var button = new Button
             {
@@ -185,6 +186,7 @@ internal sealed class MainForm : Form
         for (int c = 0; c < count; c++)
         {
             _companyButtons[c].Height = LogicalToDeviceUnits(twoColumns ? 42 : 32);
+            _companyDots[c].Size = LogicalToDeviceUnits(new Size(20, 20));
             _companyGrid.Controls.Add(_companyDots[c], c / perColumn * 2, c % perColumn);
             _companyGrid.Controls.Add(_companyButtons[c], c / perColumn * 2 + 1, c % perColumn);
         }
@@ -491,7 +493,8 @@ internal sealed class MainForm : Form
         var c = game.Companies[company];
         if (!c.Exists || game.CurrentPlayer.Money < c.Value) return;
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        var dot = Rectangle.Inflate(r, -5, -5);
+        int inset = r.Width / 4;
+        var dot = Rectangle.Inflate(r, -inset, -inset);
         g.FillEllipse(Brushes.White, dot);
         g.DrawEllipse(Pens.Black, dot);
     }
