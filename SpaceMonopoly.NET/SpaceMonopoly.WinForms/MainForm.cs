@@ -29,7 +29,7 @@ internal sealed class MainForm : Form
     private readonly Label _kindLabel = Ui.Label("");
     private readonly Label _moneyLabel = Ui.Label("", 14f, FontStyle.Bold);
     private readonly Label _status = Ui.Label("");
-    private readonly Button[] _companyButtons = new Button[Company.MaxCount];
+    private readonly CompanyButton[] _companyButtons = new CompanyButton[Company.MaxCount];
     private readonly Panel[] _companyDots = new Panel[Company.MaxCount];
     // Not auto-sized: an auto-sized table grows to fit the button text and pushes the second column out of view.
     private readonly TableLayoutPanel _companyGrid = new() { Dock = DockStyle.Fill };
@@ -125,13 +125,7 @@ internal sealed class MainForm : Form
             // Sized in ShowCompanySlots: these are added after the form has been scaled for the screen's DPI.
             var dot = new Panel { Anchor = AnchorStyles.None, Margin = Padding.Empty, BackColor = Color.FromArgb(Company.Colors[c]) };
             dot.Paint += (_, e) => PaintDot(e.Graphics, index, dot.ClientRectangle);
-            var button = new Button
-            {
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleLeft,
-                AutoEllipsis = true,
-                Margin = new Padding(2),
-            };
+            var button = new CompanyButton { Dock = DockStyle.Fill, Margin = new Padding(2) };
             button.Click += (_, _) => OpenCompany(index);
             _companyDots[c] = dot;
             _companyButtons[c] = button;
@@ -561,12 +555,12 @@ internal sealed class MainForm : Form
 
         int slots = game?.Companies.Length ?? Spec.Companies;
         ShowCompanySlots(slots);
-        string gap = slots > 6 ? Environment.NewLine : "   ";
         for (int c = 0; c < slots; c++)
         {
             var company = game?.Companies[c];
             bool exists = company?.Exists == true;
-            _companyButtons[c].Text = exists ? $"{company!.Name}{gap}{Currency.Format(company.Value)}" : Company.Names[c];
+            _companyButtons[c].TwoLines = slots > 6;
+            _companyButtons[c].SetText(exists ? company!.Name : Company.Names[c], exists ? Currency.Format(company!.Value) : "");
             _companyButtons[c].Enabled = exists && inProgress;
             _companyDots[c].Invalidate();
         }
