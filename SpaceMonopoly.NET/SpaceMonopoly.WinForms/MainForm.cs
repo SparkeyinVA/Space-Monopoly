@@ -389,7 +389,7 @@ internal sealed class MainForm : Form
         token.ThrowIfCancellationRequested();
 
         // Show which square was picked before playing it.
-        _boardView.ShowBoard(game.Board, game.Choices, square);
+        _boardView.ShowBoard(game.Board, game.Choices, square, ChoiceMarks(game));
         await Task.Delay(_settings.ComputerDelayMs, token);
 
         var events = game.PlaceSquare(square);
@@ -501,6 +501,26 @@ internal sealed class MainForm : Form
 
     private void SetStatus(string text) => _status.Text = text;
 
+    private IReadOnlyList<Pos>? _previewedChoices;
+    private IReadOnlyList<MovePreview> _previews = [];
+
+    /// <summary>What each offered square would do, worked out once per set of choices.</summary>
+    private IReadOnlyList<MovePreview> Previews(Game game)
+    {
+        if (!ReferenceEquals(_previewedChoices, game.Choices))
+        {
+            _previews = MovePreview.ForChoices(game);
+            _previewedChoices = game.Choices;
+        }
+        return _previews;
+    }
+
+    private IReadOnlyList<BoardView.ChoiceMark> ChoiceMarks(Game game) =>
+        Previews(game).Select(m => new BoardView.ChoiceMark(
+            m.Label,
+            m.Company >= 0 ? Color.FromArgb(Company.Colors[m.Company]) : null,
+            m.Details(game, Currency))).ToList();
+
     private void PaintDot(Graphics g, int company, Rectangle r)
     {
         // A white dot means the current player can afford at least one share (MoneyShow in the original).
@@ -539,7 +559,8 @@ internal sealed class MainForm : Form
         else
         {
             var player = game.CurrentPlayer;
-            _boardView.ShowBoard(game.Board, inProgress && game.Phase == GamePhase.ChoosingSquare ? game.Choices : []);
+            bool choosing = inProgress && game.Phase == GamePhase.ChoosingSquare;
+            _boardView.ShowBoard(game.Board, choosing ? game.Choices : [], marks: choosing ? ChoiceMarks(game) : null);
             _goLabel.Text = inProgress
                 ? (game.NoMoreCompanies && game.Turn + 1 == game.Rounds ? "Final round" : $"Round {game.Turn + 1} of {game.Rounds}")
                   + (game.Type == GameType.Tournament ? " (tournament)" : "")
@@ -550,7 +571,8 @@ internal sealed class MainForm : Form
 
             if (!inProgress) SetStatus("Choose Game > New Game to play again.");
             else if (!_computerBusy && player.IsHuman && game.Phase == GamePhase.ChoosingSquare)
-                SetStatus("Choose one of the flashing squares on the board.");
+                SetStatus("Choose a square (point at one for details):" + Environment.NewLine +
+                          string.Join(Environment.NewLine, Previews(game).Select((m, i) => $"{i + 1}. {m.Summary(Currency, game.CurrentPlayerIndex)}" + (m.Allowed is null ? "" : " (not allowed)"))));
             else if (!_computerBusy && player.IsHuman)
                 SetStatus("Buy and sell shares by clicking a company, then press End Turn.");
         }

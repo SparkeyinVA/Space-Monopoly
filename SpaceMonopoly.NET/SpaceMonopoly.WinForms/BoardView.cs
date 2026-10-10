@@ -19,8 +19,14 @@ internal sealed class BoardView : Control
     private readonly System.Windows.Forms.Timer _flashTimer = new() { Interval = 300 };
     private Board? _board;
     private IReadOnlyList<Pos> _choices = [];
+    private IReadOnlyList<ChoiceMark> _marks = [];
     private Pos? _marked;
     private int _flashIndex;
+    private readonly ToolTip _tip = new() { InitialDelay = 150, ReshowDelay = 50, AutoPopDelay = 30000 };
+    private int _tipChoice = -1;
+
+    /// <summary>What an offered square would do: its mark, the company colour behind it (if any) and a description.</summary>
+    public sealed record ChoiceMark(string Label, Color? Tint, string Details);
 
     public BoardView()
     {
@@ -42,18 +48,24 @@ internal sealed class BoardView : Control
 
     public event EventHandler<Pos>? SquareClicked;
 
-    public void ShowBoard(Board? board, IReadOnlyList<Pos> choices, Pos? marked = null)
+    public void ShowBoard(Board? board, IReadOnlyList<Pos> choices, Pos? marked = null, IReadOnlyList<ChoiceMark>? marks = null)
     {
         _board = board;
         _choices = choices;
+        _marks = marks is not null && marks.Count == choices.Count ? marks : [];
         _marked = marked;
+        HideTip();
         _flashTimer.Enabled = choices.Count > 0;
         Invalidate();
     }
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) _flashTimer.Dispose();
+        if (disposing)
+        {
+            _flashTimer.Dispose();
+            _tip.Dispose();
+        }
         base.Dispose(disposing);
     }
 
@@ -79,8 +91,36 @@ internal sealed class BoardView : Control
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
-        bool overChoice = AcceptClicks && HitTest(e.Location) is Pos p && _choices.Contains(p);
-        Cursor = overChoice ? Cursors.Hand : Cursors.Default;
+        int index = HitTest(e.Location) is Pos p ? IndexOfChoice(p) : -1;
+        Cursor = AcceptClicks && index >= 0 ? Cursors.Hand : Cursors.Default;
+
+        if (index == _tipChoice) return;
+        HideTip();
+        if (index >= 0 && index < _marks.Count)
+        {
+            _tipChoice = index;
+            _tip.Show($"Square {index + 1}: " + _marks[index].Details, this, e.X + 16, e.Y + 20);
+        }
+    }
+
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        base.OnMouseLeave(e);
+        HideTip();
+    }
+
+    private int IndexOfChoice(Pos p)
+    {
+        for (int i = 0; i < _choices.Count; i++)
+            if (_choices[i] == p) return i;
+        return -1;
+    }
+
+    private void HideTip()
+    {
+        if (_tipChoice < 0) return;
+        _tip.Hide(this);
+        _tipChoice = -1;
     }
 
     protected override void OnMouseClick(MouseEventArgs e)
@@ -100,6 +140,7 @@ internal sealed class BoardView : Control
         var (cell, left, top) = Geometry();
         using var letterFont = new Font("Segoe UI", Math.Max(6f, cell * 0.38f), FontStyle.Bold, GraphicsUnit.Pixel);
         using var numberFont = new Font("Segoe UI", Math.Max(6f, cell * 0.42f), FontStyle.Bold, GraphicsUnit.Pixel);
+        using var cornerFont = new Font("Segoe UI", Math.Max(5f, cell * 0.26f), FontStyle.Bold, GraphicsUnit.Pixel);
 
         for (int y = 0; y < _board.Height; y++)
         {
@@ -121,7 +162,7 @@ internal sealed class BoardView : Control
         {
             var p = _choices[i];
             var r = new RectangleF(left + p.X * cell, top + p.Y * cell, cell, cell);
-            DrawChoice(g, r, i == flashing, i + 1, numberFont);
+            DrawChoice(g, r, i == flashing, i + 1, i < _marks.Count ? _marks[i] : null, numberFont, cornerFont);
         }
 
         if (_marked is Pos m)
@@ -179,15 +220,34 @@ internal sealed class BoardView : Control
         g.DrawString(text, font, textBrush, r, format);
     }
 
-    private static void DrawChoice(Graphics g, RectangleF r, bool flashing, int number, Font font)
+    /// <summary>
+    /// An offered square: its mark (company letter, M, + or ★) in the middle on the company's colour,
+    /// and its number in the corner. Without a mark, just the number.
+    /// </summary>
+    private static void DrawChoice(Graphics g, RectangleF r, bool flashing, int number, ChoiceMark? mark, Font font, Font cornerFont)
     {
         var box = RectangleF.Inflate(r, -1.5f, -1.5f);
-        using var fill = new SolidBrush(ChoiceFill);
+        using var fill = new SolidBrush(mark?.Tint is Color tint ? Color.FromArgb(150, tint) : ChoiceFill);
         g.FillRectangle(fill, box);
         using var pen = new Pen(flashing ? FlashEdge : ChoiceEdge, Math.Max(2f, r.Width / 9f));
         g.DrawRectangle(pen, box.X, box.Y, box.Width, box.Height);
-        using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-        using var textBrush = new SolidBrush(Color.FromArgb(200, 255, 255, 255));
-        g.DrawString(number.ToString(), font, textBrush, r, format);
+
+        using var center = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+        using var textBrush = new SolidBrush(Color.White);
+        if (mark is null)
+        {
+            g.DrawString(number.ToString(), font, textBrush, r, center);
+            return;
+        }
+
+        using var shadow = new SolidBrush(Color.FromArgb(170, 0, 0, 0));
+        var shifted = r;
+        shifted.Offset(1f, 1f);
+        g.DrawString(mark.Label, font, shadow, shifted, center);
+        g.DrawString(mark.Label, font, textBrush, r, center);
+
+        var corner = new RectangleF(box.X + r.Width * 0.08f, box.Y + r.Height * 0.04f, r.Width * 0.5f, r.Height * 0.4f);
+        g.DrawString(number.ToString(), cornerFont, shadow, corner.X + 1f, corner.Y + 1f);
+        g.DrawString(number.ToString(), cornerFont, textBrush, corner.X, corner.Y);
     }
 }

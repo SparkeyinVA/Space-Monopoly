@@ -192,6 +192,13 @@ public sealed class Game
         return Phase == GamePhase.Over;
     }
 
+    /// <summary>Offers just this square, so a copy of the game can show what it would do (see <see cref="MovePreview"/>).</summary>
+    internal void OfferOnlyForPreview(Pos p)
+    {
+        _choices = [p];
+        Phase = GamePhase.ChoosingSquare;
+    }
+
     /// <summary>Lets tests offer specific squares.</summary>
     internal void SetChoicesForTesting(params Pos[] choices)
     {
