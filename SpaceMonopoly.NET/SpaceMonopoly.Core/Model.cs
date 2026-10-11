@@ -127,6 +127,9 @@ public sealed record GameRules
 
     /// <summary>Modern only: how many event cards in the deck do nothing. Chosen in New Game.</summary>
     public Chaos Chaos { get; init; } = Chaos.Standard;
+
+    /// <summary>A shorter game than usual (the tutorial plays 10 rounds). Null: the normal length.</summary>
+    public int? RoundsOverride { get; init; }
 }
 
 public sealed class Company

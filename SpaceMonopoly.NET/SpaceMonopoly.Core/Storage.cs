@@ -27,6 +27,15 @@ public sealed record AppSettings
     /// <summary>The Market window's last position and size (left, top, width, height), or null for the default.</summary>
     public int[]? MarketWindow { get; init; }
 
+    /// <summary>S12: show a short tip the first time something happens.</summary>
+    public bool ShowTips { get; init; } = true;
+
+    /// <summary>S12: the tips already shown (each is shown once).</summary>
+    public List<string> SeenTips { get; init; } = [];
+
+    /// <summary>S12: the tutorial has been offered (the first time a Modern game is started).</summary>
+    public bool TutorialOffered { get; init; }
+
     /// <summary>Adaptive difficulty (S9): computer players move along a ladder with the human's results.</summary>
     public bool AdaptiveDifficulty { get; init; }
 

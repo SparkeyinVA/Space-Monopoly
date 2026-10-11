@@ -127,7 +127,7 @@ public sealed partial class Game
     public bool SharedBoard => Type != GameType.Tournament;
 
     /// <summary>Goes per player before any reduction to fit the board.</summary>
-    public int MaxGoes => IsModern ? ModernRules.Rounds : Spec.GoesPerPlayer;
+    public int MaxGoes => Rules.RoundsOverride ?? (IsModern ? ModernRules.Rounds : Spec.GoesPerPlayer);
     public IReadOnlyList<Player> Players => _players;
     public int CurrentPlayerIndex { get; private set; }
     public Player CurrentPlayer => _players[CurrentPlayerIndex];

@@ -14,6 +14,8 @@ internal sealed class PreferencesForm : Form
     private readonly TrackBar _speed = new() { Minimum = 0, Maximum = 20, TickFrequency = 2, Width = 260 };
     private readonly Label _speedLabel = Ui.Label("");
     private readonly CheckBox _popups = new() { Text = "Show pop-up windows for new companies, mergers and splits (otherwise they appear in the news line)", AutoSize = true };
+    private readonly CheckBox _tips = new() { Text = "Show a short tip the first time something happens (Modern)", AutoSize = true };
+    private bool _resetTips;
 
     private readonly CheckBox _forceMergers = new() { Text = "Force mergers — if a merger is offered, it must be taken", AutoSize = true };
     private readonly CheckBox _forceExpansion = new() { Text = "Force expansion — if an expansion is offered, it must be taken", AutoSize = true };
@@ -53,7 +55,9 @@ internal sealed class PreferencesForm : Form
         var general = Page("General");
         var unitRow = Row(Ui.Label("Currency (₲ = Galactic Bucks):"), _unit);
         var speedRow = Row(Ui.Label("Computer player speed:"), _speed, _speedLabel);
-        general.Controls.AddRange([unitRow, _prefix, _postfix, Spacer(), speedRow, _popups]);
+        var resetTips = Ui.Button("Reset tips", (s, _) => { _resetTips = true; ((Button)s!).Enabled = false; ((Button)s!).Text = "Tips reset"; }, 100);
+        Ui.Tip(resetTips, "Show every first-time tip again.");
+        general.Controls.AddRange([unitRow, _prefix, _postfix, Spacer(), speedRow, _popups, Row(_tips, resetTips)]);
         _speed.ValueChanged += (_, _) => _speedLabel.Text = _speed.Value == 0 ? "No pause" : $"{_speed.Value * 100} ms pause";
 
         // Game rules
@@ -137,6 +141,7 @@ internal sealed class PreferencesForm : Form
         _speed.Value = Math.Clamp(s.ComputerDelayMs / 100, _speed.Minimum, _speed.Maximum);
         _speedLabel.Text = _speed.Value == 0 ? "No pause" : $"{_speed.Value * 100} ms pause";
         _popups.Checked = s.ShowComputerPopups;
+        _tips.Checked = s.ShowTips;
 
         _forceMergers.Checked = s.Rules.ForceMergers;
         _forceExpansion.Checked = s.Rules.ForceExpansion;
@@ -176,6 +181,8 @@ internal sealed class PreferencesForm : Form
             CurrencyPrefix = _prefix.Checked,
             ComputerDelayMs = _speed.Value * 100,
             ShowComputerPopups = _popups.Checked,
+            ShowTips = _tips.Checked,
+            SeenTips = _resetTips ? [] : Settings.SeenTips,
             Rules = new GameRules
             {
                 ForceMergers = _forceMergers.Checked,

@@ -56,6 +56,11 @@ internal sealed class MainForm : Form
     private readonly FlowLayoutPanel _info = new() { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
     private readonly Button _market;
     private readonly ToolStripMenuItem _daily;
+
+    // S12: tips and the tutorial.
+    private readonly CoachBar _coach = new();
+    private TutorialRun? _tutorial;
+    private int _shownStep = -1;
     private readonly ToolStripMenuItem _fast;
     private const int FastDelayMs = 150;
 
@@ -128,7 +133,8 @@ internal sealed class MainForm : Form
         var howTo = new ToolStripMenuItem("&How to Play", null, (_, _) => HelpForms.ShowHowToPlay(this, _game?.Type ?? _settings.LastGameType, Currency), Keys.F1);
         var about = new ToolStripMenuItem("&About Space Monopoly", null, (_, _) => HelpForms.ShowAbout(this));
         var achievementsItem = new ToolStripMenuItem("&Achievements", null, (_, _) => ShowAchievements());
-        var help = new ToolStripMenuItem("&Help", null, howTo, achievementsItem, about);
+        var tutorialItem = new ToolStripMenuItem("&Tutorial", null, (_, _) => StartTutorial());
+        var help = new ToolStripMenuItem("&Help", null, howTo, tutorialItem, achievementsItem, about);
         menu.Items.AddRange([project, options, help]);
         MainMenuStrip = menu;
 
@@ -211,6 +217,9 @@ internal sealed class MainForm : Form
 
         Controls.Add(_boardView);
         Controls.Add(_news);
+        Controls.Add(_coach);
+        _coach.Dismissed += (_, _) => CoachDismissed();
+        _coach.SkipRequested += (_, _) => EndTutorial("Tutorial skipped. The game carries on as a normal game.");
         _newsTimer.Tick += (_, _) => FadeNews();
         Controls.Add(side);
         Controls.Add(menu);
@@ -339,7 +348,101 @@ internal sealed class MainForm : Form
             _storage.SaveSettings(_settings);
         }
         _dailyDate = null;
+
+        // S12: offer the tutorial the first time a Modern game is started.
+        if (form.GameType == GameType.Modern && !_settings.TutorialOffered)
+        {
+            _settings = _settings with { TutorialOffered = true };
+            _storage.SaveSettings(_settings);
+            if (MessageBox.Show(this, "This is your first Modern game. Would you like a short guided game first (about 5 minutes)? " +
+                                      "You can also start it any time from Help > Tutorial.",
+                    "Tutorial", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+            {
+                StartTutorial();
+                return;
+            }
+        }
+        EndTutorial(null);
         await StartGame(form.Players, form.GameType, form.Chaos, form.Advisor, form.Adaptive);
+    }
+
+    /// <summary>
+    /// S12: the guided first game: a fixed board and seed, two Easy opponents and 10 rounds, with coach steps above the board.
+    /// The player can skip it at any time; the game then carries on normally.
+    /// </summary>
+    private async void StartTutorial()
+    {
+        if (InProgress)
+        {
+            if (MessageBox.Show(this, "End the current game and start the tutorial? The current game won't be recorded.",
+                    "Tutorial", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                return;
+            _cts?.Cancel();
+            _game = null;
+        }
+        _dailyDate = null;
+        _tutorial = new TutorialRun();
+        _shownStep = -1;
+        string name = _lastPlayers.FirstOrDefault(p => p.Kind == PlayerKind.Human)?.Name ?? "You";
+        await StartGame(
+            [new(name, PlayerKind.Human), new("Easy 1", PlayerKind.ComputerEasy), new("Easy 2", PlayerKind.ComputerEasy)],
+            GameType.Modern, Chaos.Calm, advisor: true, adaptive: false, Tutorial.MakeBoard(), Tutorial.Seed, Tutorial.Rules, Tutorial.Spec);
+    }
+
+    private void EndTutorial(string? message)
+    {
+        if (_tutorial is null) return;
+        _tutorial = null;
+        _shownStep = -1;
+        _coach.HideBar();
+        _boardView.Highlight = null;
+        if (message is not null) Log(message);
+    }
+
+    private void CoachDismissed()
+    {
+        if (_tutorial?.Current is { NeedsAcknowledgement: true })
+        {
+            _tutorial.Acknowledge();
+            if (_tutorial.Finished) EndTutorial("Tutorial complete. Have fun!");
+        }
+        RefreshAll();
+    }
+
+    /// <summary>S12: shows the current tutorial step, or the next first-time tip, above the board.</summary>
+    private void UpdateCoach(Game? game, bool inProgress)
+    {
+        if (game is null || !inProgress)
+        {
+            if (_tutorial is null) _coach.HideBar();
+            return;
+        }
+        if (_tutorial is { } run)
+        {
+            run.Update(game);
+            if (run.Finished)
+            {
+                EndTutorial("Tutorial complete. Have fun!");
+                return;
+            }
+            var step = run.Current!;
+            if (_shownStep != run.StepIndex)
+            {
+                _shownStep = run.StepIndex;
+                _coach.ShowStep(run.StepIndex + 1, Tutorial.Steps.Count, step.Text(game, Currency), step.NeedsAcknowledgement);
+            }
+            if (game.CurrentPlayer.IsHuman && game.Phase == GamePhase.ChoosingSquare && step.Target?.Invoke(game) is Pos target)
+                _boardView.Highlight = target;
+            return;
+        }
+
+        // First-time tips, one at a time, each shown once.
+        if (!_settings.ShowTips || _coach.Showing || _computerBusy) return;
+        var tip = Tips.Applicable(game).FirstOrDefault(id => !_settings.SeenTips.Contains(id));
+        if (tip is null) return;
+        _settings = _settings with { SeenTips = [.. _settings.SeenTips, tip] };
+        _storage.SaveSettings(_settings);
+        _coach.ShowTip(Tips.Text(tip, Currency));
     }
 
     /// <summary>
@@ -351,6 +454,7 @@ internal sealed class MainForm : Form
         if (InProgress) return;
         var today = DateTime.Today;
         string name = _lastPlayers.FirstOrDefault(p => p.Kind == PlayerKind.Human)?.Name ?? "You";
+        EndTutorial(null);
         _dailyDate = today;
         // F15: the same game for everyone today: fixed rules (not the player's Preferences) and the medium grid,
         // without changing the player's own grid size.
@@ -630,7 +734,13 @@ internal sealed class MainForm : Form
         }
 
         _boardView.AcceptClicks = false;
+        var heldBefore = game.CurrentPlayer.Shares.ToArray();
         var events = game.PlaceSquare(square);
+        if (_tutorial is not null)
+        {
+            _tutorial.Progress.SquaresPlayed++;
+            if (events.OfType<CompanyExpandedEvent>().Any(e => heldBefore[e.Company] > 0)) _tutorial.Progress.GrewOwnCompany = true;
+        }
         RefreshAll();
         ReportEvents(game, events, popups: true);
         SettleConversions(game, events);
@@ -654,6 +764,7 @@ internal sealed class MainForm : Form
         }
         int number = game.Choices.ToList().IndexOf(square) + 1;
         game.Swap(square);
+        if (_tutorial is not null) _tutorial.Progress.Swaps++;
         Log($"{game.CurrentPlayer.Name} swapped square {number} for a new one.");
         RefreshAll();
     }
@@ -735,6 +846,7 @@ internal sealed class MainForm : Form
                 "New hand", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
             return;
         game.Prospect();
+        if (_tutorial is not null) _tutorial.Progress.NewHands++;
         Log($"{game.CurrentPlayer.Name} took a new hand: threw away all their squares and drew new ones.");
         RefreshAll();
     }
@@ -910,6 +1022,7 @@ internal sealed class MainForm : Form
         using var form = new MarketForm(game, Currency, _settings.OpenMarketAfterSquare, trade =>
         {
             Log(EventText.Describe(game, trade, Currency));
+            if (_tutorial is not null && trade.IsBuy) _tutorial.Progress.SharesBought += trade.Quantity;
             RefreshAll();
         }, suggested, _advisorEnabled ? () => { _advisorUses[game.CurrentPlayerIndex]++; return Advisor.Suggest(game, Currency).Trades; } : null);
         if (_settings.MarketWindow is [var x, var y, var w, var h] && w > 200 && h > 150 &&
@@ -948,6 +1061,7 @@ internal sealed class MainForm : Form
         using var form = new CompanyForm(game, company, Currency, canTrade, trade =>
         {
             Log(EventText.Describe(game, trade, Currency));
+            if (_tutorial is not null && trade.IsBuy) _tutorial.Progress.SharesBought += trade.Quantity;
             RefreshAll();
         });
         form.ShowDialog(this);
@@ -1104,6 +1218,7 @@ internal sealed class MainForm : Form
 
         _endTurn.Enabled = inProgress && !_computerBusy && game!.Phase == GamePhase.Trading && game.CurrentPlayer.IsHuman;
         ShowHand(game, inProgress);
+        UpdateCoach(game, inProgress);
         bool modern = game?.IsModern == true && inProgress;
         _market.Enabled = inProgress && !_computerBusy && game!.Phase == GamePhase.Trading && game.CurrentPlayer.IsHuman;
         bool advisor = inProgress && _advisorEnabled;
