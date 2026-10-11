@@ -88,9 +88,17 @@ internal static class Dialogs
         if (biggest.Size > 0)
             lines.Add($"Biggest company: {Company.Names[biggest.Company]} with {biggest.Size} squares.");
 
-        var table = Ui.Table(("Player", 150), ("Type", 140), ("Money left", 110), ("Worth of shares", 120), ("Net wealth", 120));
+        if (game.IsModern)
+            lines.Add("Final payouts and secret goals are included below; the game log lists each one.");
+
+        var table = game.IsModern
+            ? Ui.Table(("Player", 130), ("Secret goal", 210), ("Goal reward", 90), ("Money", 100), ("Net wealth", 110))
+            : Ui.Table(("Player", 150), ("Type", 140), ("Money left", 110), ("Worth of shares", 120), ("Net wealth", 120));
+        var goals = game.GameEndEvents.OfType<SecretGoalEvent>().ToDictionary(g => g.Player);
         foreach (var s in standings)
-            table.Items.Add(Ui.Row(s.Name, s.Kind.Label(), currency.Format(s.Money), currency.Format(s.ShareWorth), currency.Format(s.NetWorth)));
+            table.Items.Add(game.IsModern && goals.TryGetValue(s.Player, out var g)
+                ? Ui.Row(s.Name, SecretGoals.Description(g.Goal), g.Reward > 0 ? currency.Format(g.Reward) : "not met", currency.Format(s.Money), currency.Format(s.NetWorth))
+                : Ui.Row(s.Name, s.Kind.Label(), currency.Format(s.Money), currency.Format(s.ShareWorth), currency.Format(s.NetWorth)));
 
         Show(owner, "Game Over", Color.Gold, lines, table);
     }

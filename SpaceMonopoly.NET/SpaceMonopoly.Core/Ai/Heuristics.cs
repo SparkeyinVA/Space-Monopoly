@@ -96,6 +96,30 @@ internal static class Heuristics
         return effect;
     }
 
+    /// <summary>
+    /// Modern: the majority bonus a player would collect from a company if they held <paramref name="shares"/>.
+    /// Every company pays its two largest holders (10x and 5x its price) either when it is taken over or at
+    /// the end of the game, so this is what the stake is worth on top of the shares themselves.
+    /// </summary>
+    public static double BonusAt(Game game, int player, int company, BigInteger shares)
+    {
+        var c = game.Companies[company];
+        if (!game.IsModern || !c.Exists || shares < ModernRules.MinSharesForBonus) return 0;
+        var holdings = Enumerable.Range(0, game.Players.Count)
+            .Select(i => (i, i == player ? shares : game.Players[i].Shares[company]));
+        return (double)Game.MajorityBonuses(holdings, c.Value).GetValueOrDefault(player);
+    }
+
+    /// <summary>Modern: the majority bonuses a player's current holdings are on course to collect.</summary>
+    public static double ExpectedBonuses(Game game, int player)
+    {
+        if (!game.IsModern) return 0;
+        double total = 0;
+        for (int c = 0; c < game.Companies.Length; c++)
+            total += BonusAt(game, player, c, game.Players[player].Shares[c]);
+        return total;
+    }
+
     /// <summary>Modern: what a unit of cash held to the end of the game earns in interest.</summary>
     public static double InterestReturn(Game game, int player)
     {
@@ -133,7 +157,7 @@ internal static class Heuristics
         double bestRatio = ratio.Max();
         expected += (double)pl.Money * Math.Max(bestRatio * 0.8, InterestReturn(game, player));
 
-        return (double)game.NetWorth(player) + expected;
+        return (double)game.NetWorth(player) + expected + ExpectedBonuses(game, player);
     }
 
     /// <summary>How well a player is doing compared with the strongest opponent.</summary>

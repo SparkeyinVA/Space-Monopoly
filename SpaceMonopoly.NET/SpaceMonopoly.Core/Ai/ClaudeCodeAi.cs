@@ -139,6 +139,10 @@ public sealed class ClaudeCodeAi : IAiPlayer
                           $"and its largest holder gets a bonus of {ModernRules.LargestHolderBonus}x its share price, the second-largest {ModernRules.SecondHolderBonus}x " +
                           $"(you need at least {ModernRules.MinSharesForBonus} shares to qualify). " +
                           $"Cash earns {ModernRules.InterestPercent}% interest at the start of each of your turns, so holding cash can make sense.");
+            sb.AppendLine($"At the end of the game every company still in play also pays its two largest holders (at least {ModernRules.MinSharesForBonus} shares) " +
+                          $"{ModernRules.LargestHolderBonus}x and {ModernRules.SecondHolderBonus}x its share price, so majorities are worth fighting for.");
+            if (game.GoalOf(me) is SecretGoal goal)
+                sb.AppendLine($"Your secret goal (revealed at the end): {SecretGoals.Description(goal)}");
             if (game.CurrentEvent is EventCard now && game.NextEvent is EventCard next)
                 sb.AppendLine($"Event this round: {EventCards.Title(now)} ({EventCards.Description(now)}) " +
                               $"Next round: {EventCards.Title(next)} ({EventCards.Description(next)}) Plan your trades for it.");

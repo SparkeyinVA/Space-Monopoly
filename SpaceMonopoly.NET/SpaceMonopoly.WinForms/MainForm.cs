@@ -133,6 +133,7 @@ internal sealed class MainForm : Form
         _goLabel.MaximumSize = _playerLabel.MaximumSize = new Size(330, 0);
         _status.MaximumSize = new Size(300, 0);
         _status.ForeColor = Color.FromArgb(40, 60, 140);
+        _kindLabel.MaximumSize = new Size(330, 0);
         _eventLabel.ForeColor = Color.FromArgb(150, 60, 0);
         _eventLabel.MaximumSize = new Size(330, 0);
         info.Controls.AddRange([_goLabel, _eventLabel, _playerLabel, _kindLabel, _moneyLabel, _status]);
@@ -340,6 +341,7 @@ internal sealed class MainForm : Form
         _boardView.AcceptClicks = false;
         RefreshAll();
         Log($"Game over after round {game.Turn}.");
+        foreach (var e in game.GameEndEvents) Log(EventText.Describe(game, e, Currency));
         Dialogs.ShowGameOver(this, game, Currency);
 
         var fresh = new List<(GridSize Size, bool Modern, int Index)>();
@@ -659,6 +661,11 @@ internal sealed class MainForm : Form
                 : $"Game over after round {game.Turn}";
             _playerLabel.Text = inProgress ? player.Name : $"Winner: {game.Standings()[0].Name}";
             _kindLabel.Text = inProgress ? player.Kind.Label() : "";
+            // A human sees their own secret goal on their turn.
+            if (inProgress && player.IsHuman && game.GoalOf(game.CurrentPlayerIndex) is SecretGoal goal)
+                _kindLabel.Text += Environment.NewLine + "Your secret goal: " + SecretGoals.Description(goal);
+            if (inProgress && player.IsHuman && game.IsModern && game.HandOf(game.CurrentPlayerIndex).Count > ModernRules.HandSize)
+                _kindLabel.Text += Environment.NewLine + "You're in last place, so you hold an extra square.";
             _eventLabel.Text = inProgress && game.CurrentEvent is EventCard now && game.NextEvent is EventCard next
                 ? $"This round: {EventCards.Title(now)}" + (now == EventCard.QuietQuarter ? "" : $" — {EventCards.Description(now)}") +
                   Environment.NewLine + $"Next round: {EventCards.Title(next)}" + (next == EventCard.QuietQuarter ? "" : $" — {EventCards.Description(next)}")

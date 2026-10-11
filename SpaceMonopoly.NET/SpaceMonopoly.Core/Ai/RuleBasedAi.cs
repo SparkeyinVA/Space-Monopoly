@@ -139,16 +139,20 @@ public sealed class RuleBasedAi : IAiPlayer
             .Where(c => game.Companies[c].Exists && ratio[c] > interest)
             .OrderByDescending(c => ratio[c])
             .ToList();
-        if (ranked.Count == 0) return orders;
+        if (ranked.Count == 0 && !game.IsModern) return orders;
 
-        double bestRatio = ratio[ranked[0]];
+        double bestRatio = ranked.Count > 0 ? ratio[ranked[0]] : 0;
+        int top = ranked.Count > 0 ? ranked[0] : -1;
         var cash = me.Money;
+        int self = game.CurrentPlayerIndex;
 
         if (sellThreshold is double threshold)
         {
             for (int c = 0; c < game.Companies.Length; c++)
             {
-                if (!game.Companies[c].Exists || me.Shares[c] == 0 || c == ranked[0]) continue;
+                if (!game.Companies[c].Exists || me.Shares[c] == 0 || c == top) continue;
+                // Modern: don't give up a stake that's on course for a majority bonus.
+                if (Heuristics.BonusAt(game, self, c, me.Shares[c]) > 0) continue;
                 if (ratio[c] < bestRatio * threshold)
                 {
                     orders.Add(new TradeOrder(TradeAction.Sell, c, 0));
@@ -159,6 +163,10 @@ public sealed class RuleBasedAi : IAiPlayer
 
         // Modern caps how many shares can be bought in a turn and how many each company has left.
         var allowance = game.BuyAllowanceLeft;
+
+        // Modern: first buy into majorities (F4), where a stake earns a bonus worth more than buying for growth.
+        if (game.IsModern) BuyStakes(game, ratio, orders, ref cash, ref allowance);
+
         foreach (int c in ranked)
         {
             long price = game.Companies[c].Value;
@@ -172,5 +180,49 @@ public sealed class RuleBasedAi : IAiPlayer
             if (allowance > 0) allowance -= qty;
         }
         return orders;
+    }
+
+    /// <summary>
+    /// Modern: buys the stakes that raise the player's majority bonuses the most for the money, as long as each
+    /// beats the interest cash would earn. Tries reaching the 10-share minimum and overtaking or tying each rival.
+    /// </summary>
+    private static void BuyStakes(Game game, double[] ratio, List<TradeOrder> orders, ref BigInteger cash, ref BigInteger allowance)
+    {
+        int me = game.CurrentPlayerIndex;
+        var held = game.CurrentPlayer.Shares.ToArray();
+        double interest = Heuristics.InterestReturn(game, me);
+
+        for (int round = 0; round < 4 && allowance != 0; round++)
+        {
+            (int Company, BigInteger Qty, double Score) best = (-1, 0, interest);
+            for (int c = 0; c < game.Companies.Length; c++)
+            {
+                var company = game.Companies[c];
+                if (!company.Exists || company.Value <= 0) continue;
+                var cap = cash / company.Value;
+                if (allowance > 0) cap = BigInteger.Min(cap, allowance);
+                if (game.SharesLeft(c) is var left && left >= 0) cap = BigInteger.Min(cap, left - (held[c] - game.CurrentPlayer.Shares[c]));
+                if (cap <= 0) continue;
+
+                double now = Heuristics.BonusAt(game, me, c, held[c]);
+                var targets = new List<BigInteger> { ModernRules.MinSharesForBonus - held[c] };
+                for (int i = 0; i < game.Players.Count; i++)
+                    if (i != me) targets.AddRange([game.Players[i].Shares[c] - held[c], game.Players[i].Shares[c] + 1 - held[c]]);
+
+                foreach (var qty in targets.Where(q => q > 0 && q <= cap).Distinct())
+                {
+                    double gain = Heuristics.BonusAt(game, me, c, held[c] + qty) - now;
+                    if (gain <= 0) continue;
+                    double score = gain / ((double)qty * company.Value) + ratio[c];
+                    if (score > best.Score) best = (c, qty, score);
+                }
+            }
+            if (best.Company < 0) break;
+
+            orders.Add(new TradeOrder(TradeAction.Buy, best.Company, best.Qty));
+            held[best.Company] += best.Qty;
+            cash -= best.Qty * game.Companies[best.Company].Value;
+            if (allowance > 0) allowance -= best.Qty;
+        }
     }
 }

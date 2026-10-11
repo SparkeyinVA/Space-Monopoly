@@ -71,6 +71,7 @@ public sealed partial class Game
         {
             for (int i = 0; i < _players.Length; i++) FillHand(i);
             InitEvents();
+            InitComebacks();
         }
 
         BeginTurn();
@@ -90,6 +91,7 @@ public sealed partial class Game
         _swappedThisTurn = other._swappedThisTurn;
         InterestThisTurn = other.InterestThisTurn;
         CopyEvents(other);
+        CopyComebacks(other);
         _rng = other._rng.Fork();
         CurrentPlayerIndex = other.CurrentPlayerIndex;
         Turn = other.Turn;
@@ -182,7 +184,8 @@ public sealed partial class Game
         InterestThisTurn = IsModern ? CurrentPlayer.Money * ModernRules.InterestPercent / 100 : 0;
         CurrentPlayer.Money += InterestThisTurn;
         _choices = IsModern ? RefreshHand(CurrentPlayerIndex) : GenerateChoices();
-        Phase = _choices.Count == 0 ? GamePhase.Over : GamePhase.ChoosingSquare;
+        if (_choices.Count == 0) Finish();
+        else Phase = GamePhase.ChoosingSquare;
     }
 
     /// <summary>
@@ -223,8 +226,7 @@ public sealed partial class Game
 
         if (Turn >= Rounds)
         {
-            Phase = GamePhase.Over;
-            _choices = [];
+            Finish();
             return true;
         }
 
@@ -292,7 +294,7 @@ public sealed partial class Game
     private void FillHand(int player, IReadOnlyCollection<Pos>? exclude = null)
     {
         var hand = _hands[player];
-        int missing = ModernRules.HandSize - hand.Count;
+        int missing = HandSizeFor(player) - hand.Count;   // one more for last place (S7)
         if (missing <= 0) return;
 
         bool canFound = Companies.Any(c => !c.Exists);
@@ -328,11 +330,7 @@ public sealed partial class Game
     }
 
     /// <summary>Ends the game early (Game > End Game).</summary>
-    public void EndNow()
-    {
-        Phase = GamePhase.Over;
-        _choices = [];
-    }
+    public void EndNow() => Finish();
 
     // ------------------------------------------------------------------ choosing a square
 
@@ -437,6 +435,7 @@ public sealed partial class Game
                     (survivor, absorbed) = (absorbed, survivor);
 
                 Merge(survivor, absorbed, events);
+                RecordMerger();
                 board[p] = Board.CellForCompany(survivor);
                 board.Replace(Board.CellForCompany(absorbed), Board.CellForCompany(survivor));
                 Companies[absorbed].Exists = false;
@@ -477,6 +476,7 @@ public sealed partial class Game
     {
         var company = Companies.First(c => !c.Exists);
         company.Exists = true;
+        RecordFounder(company.Index);
         company.Value = Claim(p, company.Index);
 
         foreach (int i in Recipients) _players[i].Shares[company.Index] = 0;

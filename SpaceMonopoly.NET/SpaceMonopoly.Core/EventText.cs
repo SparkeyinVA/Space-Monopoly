@@ -58,6 +58,14 @@ public static class EventText
                 return text;
             }
 
+            case FinalPayoutEvent f:
+                return $"Final payout from {Co(f.Company)} (shares at {currency.Format(f.Price)}): " +
+                       string.Join(", ", f.Payouts.Select(p => $"{Name(p.Player)} {currency.Format(p.Amount)}")) + ".";
+
+            case SecretGoalEvent g:
+                return $"{Name(g.Player)}'s secret goal: {SecretGoals.Description(g.Goal)} " +
+                       (g.Reward > 0 ? $"Achieved: {currency.Format(g.Reward)}." : "Not achieved.");
+
             case NoMoreCompaniesEvent n:
                 return $"No more companies can be formed on {(game.Type == GameType.Tournament ? Name(n.Player) + "'s board" : "the board")}. " +
                        $"The game will end after round {n.LastRound}.";
