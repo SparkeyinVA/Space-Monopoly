@@ -33,16 +33,25 @@ public static class ModernRules
     public static int FirstSplitSquares { get; set; } = 5;
 
     /// <summary>...and this share price.</summary>
-    public static long FirstSplitPrice { get; set; } = 1500;
+    public static long FirstSplitPrice { get; set; } = 2000;
 
     /// <summary>S19: the second split needs this many squares...</summary>
-    public static int SecondSplitSquares { get; set; } = 10;
+    public static int SecondSplitSquares { get; set; } = 15;
 
     /// <summary>...and this share price. After two splits a company is a blue chip and never splits again.</summary>
-    public static long SecondSplitPrice { get; set; } = 3000;
+    public static long SecondSplitPrice { get; set; } = 4000;
 
     /// <summary>S19 experiment: after each split, halve the company's growth per square too.</summary>
     public static bool GrowthHalvesAfterSplit { get; set; }
+
+    /// <summary>S19 decision: bonus multiples double with each split, so a split doesn't shrink the prizes.</summary>
+    public static bool BonusDoublesPerSplit { get; set; } = true;
+
+    /// <summary>
+    /// The price merger bonuses and final payouts are based on: the share price, doubled for each split the company has had
+    /// (so the multiples go 10×/5× → 20×/10× → 40×/20× at mergers, and 5×/2.5× → 10×/5× → 20×/10× at the end).
+    /// </summary>
+    public static long BonusPrice(Company company) => BonusDoublesPerSplit ? company.Value << company.Splits : company.Value;
 
     /// <summary>The squares and price a company with this many splits needs for its next one, or null for a blue chip.</summary>
     public static (int Squares, long Price)? NextSplit(int splits) => splits switch

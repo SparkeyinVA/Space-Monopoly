@@ -153,7 +153,7 @@ public sealed partial class Game
         // in the last two rounds don't count, and a sole qualifying holder gets the first bonus only.
         foreach (var c in live.Where(c => Board.CompanySize(c.Index) >= ModernRules.FinalPayoutMinSquares))
         {
-            var bonuses = FinalPayouts(Enumerable.Range(0, _players.Length).Select(i => (i, SharesForFinalRanking(i, c.Index))), c.Value);
+            var bonuses = FinalPayouts(Enumerable.Range(0, _players.Length).Select(i => (i, SharesForFinalRanking(i, c.Index))), ModernRules.BonusPrice(c));
             if (bonuses.Count == 0) continue;
             foreach (var (player, amount) in bonuses) _players[player].Money += amount;
             events.Add(new FinalPayoutEvent(c.Index, c.Value, bonuses.Select(b => new Payout(b.Key, b.Value)).ToList()));

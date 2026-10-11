@@ -62,7 +62,8 @@ public static class RulesText
             Line("  • Which survives: the company with more squares. On a tie, the earlier letter. The other is taken over and disappears.");
             Line("  • If you hold shares in the company taken over: you're paid its share price in cash for each share, and those shares are gone. " +
                  $"Its largest holder also gets a bonus of {ModernRules.LargestHolderBonus}× its share price and the second-largest {ModernRules.SecondHolderBonus}×. " +
-                 $"You need at least {ModernRules.MinSharesForBonus} shares to qualify. Players tied for largest share both bonuses; players tied for second share the second bonus.");
+                 $"You need at least {ModernRules.MinSharesForBonus} shares to qualify. Players tied for largest share both bonuses; players tied for second share the second bonus. " +
+                 "The multiples double each time the company has split (20× and 10× after one split, 40× and 20× after two), so splits don't shrink the prizes.");
             Line("  • Then you may turn any part of that money into shares of the surviving company, at its new price. This doesn't use your buying allowance; " +
                  "whatever you don't convert stays as cash.");
             Line($"  • If you hold shares in the surviving company: you get no cash, but its share price rises by half the absorbed company's price, " +
@@ -121,7 +122,7 @@ public static class RulesText
             Line($"After {ModernRules.Rounds} rounds (or one round after there's no room left for a new company). Then every company of " +
                  $"{ModernRules.FinalPayoutMinSquares} or more squares pays its two largest holders (at least {ModernRules.MinSharesForBonus} shares) " +
                  $"{(double)ModernRules.LargestHolderBonus / ModernRules.FinalPayoutDivisor}× and {(double)ModernRules.SecondHolderBonus / ModernRules.FinalPayoutDivisor}× " +
-                 $"its share price: half a merger bonus. A sole qualifying holder gets only the first. Shares bought in the last {ModernRules.LateBuyRounds} rounds " +
+                 $"its share price, half a merger bonus, doubled for each split the company has had. A sole qualifying holder gets only the first. Shares bought in the last {ModernRules.LateBuyRounds} rounds " +
                  "don't count for this ranking. Secret goals are paid, and the highest net worth wins. Modern scores have their own high score tables.");
         }
         else

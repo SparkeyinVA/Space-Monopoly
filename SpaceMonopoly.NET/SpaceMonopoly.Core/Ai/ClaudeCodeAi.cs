@@ -39,7 +39,7 @@ public sealed class ClaudeCodeAi : IAiPlayer
         {
             sb.AppendLine($"  The survivor's price rises by half the absorbed company's price. Shares in the absorbed company are bought back in cash at its price " +
                           $"(you get no survivor shares). Its largest holder gets a bonus of {ModernRules.LargestHolderBonus}x its share price and the second-largest " +
-                          $"{ModernRules.SecondHolderBonus}x; you need at least {ModernRules.MinSharesForBonus} shares to qualify. Players tied for largest share both bonuses; " +
+                          $"{ModernRules.SecondHolderBonus}x (both doubled for each split the absorbed company has had); you need at least {ModernRules.MinSharesForBonus} shares to qualify. Players tied for largest share both bonuses; " +
                           "players tied for second share the second bonus. Each player paid at a merger may turn any part of that money into survivor shares " +
                           "at the survivor's new price; this doesn't count toward the buy limit.");
         }
@@ -61,7 +61,7 @@ public sealed class ClaudeCodeAi : IAiPlayer
             sb.AppendLine($"- Cash earns {ModernRules.InterestPercent}% interest at the start of each of your turns.");
             sb.AppendLine($"- At the end of the game every company of {ModernRules.FinalPayoutMinSquares} or more squares pays its two largest holders " +
                           $"{(double)ModernRules.LargestHolderBonus / ModernRules.FinalPayoutDivisor}x and {(double)ModernRules.SecondHolderBonus / ModernRules.FinalPayoutDivisor}x " +
-                          $"its share price (same {ModernRules.MinSharesForBonus}-share minimum; a sole holder gets only the first). " +
+                          $"its share price, doubled for each split (same {ModernRules.MinSharesForBonus}-share minimum; a sole holder gets only the first). " +
                           $"Shares bought in the last {ModernRules.LateBuyRounds} rounds don't count for this ranking.");
             sb.AppendLine("- From round 3 an event card is played at the start of each round; the next round's card is always announced in advance.");
             sb.AppendLine("- Each player has a secret goal worth a cash reward at the end.");
@@ -312,7 +312,7 @@ public sealed class ClaudeCodeAi : IAiPlayer
                 if (Visible(p)) sb.Append($" {Who(p)} {game.Players[p].Shares[c.Index]:N0};");
             if (game.IsModern && !hidden)
             {
-                var bonuses = Game.MajorityBonuses(Enumerable.Range(0, game.Players.Count).Select(p => (p, game.Players[p].Shares[c.Index])), c.Value);
+                var bonuses = Game.MajorityBonuses(Enumerable.Range(0, game.Players.Count).Select(p => (p, game.Players[p].Shares[c.Index])), ModernRules.BonusPrice(c));
                 sb.Append(bonuses.Count == 0
                     ? $" No one holds the {ModernRules.MinSharesForBonus} shares needed for a majority bonus."
                     : " Bonus now goes to: " + string.Join(", ", bonuses.OrderByDescending(b => b.Value).Select(b => $"{Who(b.Key)} {currency.Format(b.Value)}")) + ".");

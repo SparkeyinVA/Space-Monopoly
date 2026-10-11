@@ -46,7 +46,7 @@ public class SplitTests
     public void An_expensive_small_company_does_not_split_below_the_size()
     {
         // Founded between four planets: 100 + 4 x 500 = 2,100, but only 1 square.
-        var game = WithCompany(new Pos(1, 0), new Pos(0, 1), new Pos(2, 0), new Pos(1, 2));
+        var game = WithCompany(new Pos(1, 0), new Pos(0, 1), new Pos(2, 1), new Pos(1, 2));
         Assert.True(game.Companies[0].Value >= ModernRules.FirstSplitPrice);
         Assert.Equal(0, game.Companies[0].Splits);
     }
@@ -55,19 +55,32 @@ public class SplitTests
     public void Splits_happen_twice_at_most_and_double_the_shares_and_the_limit()
     {
         // A planet above every square of row 1, so each square adds 600.
-        var circles = Enumerable.Range(1, 14).Select(x => new Pos(x, 0)).ToArray();
+        var circles = Enumerable.Range(1, ModernRules.SecondSplitSquares).Select(x => new Pos(x, 0)).ToArray();
         var game = WithCompany(circles);
         var shares = game.Players[0].Shares[0];
-        for (int x = 2; x <= 5; x++) Play(game, new Pos(x, 1));   // 5 squares
+        for (int x = 2; x <= ModernRules.FirstSplitSquares; x++) Play(game, new Pos(x, 1));   // 5 squares, 3,000
         Assert.Equal(1, game.Companies[0].Splits);
         Assert.Equal(2 * shares, game.Players[0].Shares[0]);
         Assert.Equal(2 * ModernRules.SharesPerCompany, game.Companies[0].Supply);
 
-        for (int x = 6; x <= 14; x++) Play(game, new Pos(x, 1));  // 14 squares
+        for (int x = ModernRules.FirstSplitSquares + 1; x < ModernRules.SecondSplitSquares; x++) Play(game, new Pos(x, 1));
+        Assert.Equal(1, game.Companies[0].Splits);                  // priced well over 4,000, but one square short
+        Play(game, new Pos(ModernRules.SecondSplitSquares, 1));
         Assert.Equal(2, game.Companies[0].Splits);
         Assert.Equal(4 * shares, game.Players[0].Shares[0]);
         Assert.Equal(4 * ModernRules.SharesPerCompany, game.Companies[0].Supply);
         Assert.Null(ModernRules.NextSplit(game.Companies[0].Splits));   // a blue chip: no third split
+    }
+
+    [Fact]
+    public void Bonuses_double_with_each_split()
+    {
+        var company = new Company(0) { Value = 1000, Exists = true };
+        Assert.Equal(1000, ModernRules.BonusPrice(company));
+        company.Splits = 1;
+        Assert.Equal(2000, ModernRules.BonusPrice(company));   // 10x / 5x of this become 20x / 10x of the share price
+        company.Splits = 2;
+        Assert.Equal(4000, ModernRules.BonusPrice(company));
     }
 
     [Fact]

@@ -594,7 +594,7 @@ public sealed partial class Game
         // Modern: shares in the company taken over are bought out for cash (no free shares in the survivor),
         // and its two largest holders get a bonus.
         var bonuses = IsModern
-            ? MajorityBonuses(Recipients.Select(i => (i, _players[i].Shares[absorbed])), absorbedValue * (MergerMania ? 2 : 1))
+            ? MajorityBonuses(Recipients.Select(i => (i, _players[i].Shares[absorbed])), ModernRules.BonusPrice(b) * (MergerMania ? 2 : 1))
             : [];
 
         var rows = new List<MergerRow>();

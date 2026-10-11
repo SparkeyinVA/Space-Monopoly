@@ -21,6 +21,16 @@ string? Arg(string name) => args.SkipWhile(a => a != name).Skip(1).FirstOrDefaul
 if (Arg("--cash") is string cash) ModernRules.StartingMoney = long.Parse(cash, CultureInfo.InvariantCulture);
 if (Arg("--halving") is "yes") ModernRules.GrowthHalvesAfterSplit = true;
 if (Arg("--split4") is "yes") { ModernRules.FirstSplitSquares = 4; ModernRules.SecondSplitSquares = 8; }
+// --splits 5,1500,10,3000: the squares and price for the first and second splits.
+if (Arg("--splits") is string sp && sp.Split(',').Select(x => long.Parse(x, CultureInfo.InvariantCulture)).ToArray() is [var s1, var p1, var s2, var p2])
+{
+    ModernRules.FirstSplitSquares = (int)s1;
+    ModernRules.FirstSplitPrice = p1;
+    ModernRules.SecondSplitSquares = (int)s2;
+    ModernRules.SecondSplitPrice = p2;
+}
+// --flat-bonus yes: bonuses don't double with splits (the rule before the S19 decisions).
+if (Arg("--flat-bonus") is "yes") ModernRules.BonusDoublesPerSplit = false;
 // --baseline yes: the rules before S19 (1,000 shares, a 100-share buy limit, 6,000 to start, no splits), for comparison.
 if (Arg("--baseline") is "yes")
 {
