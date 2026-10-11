@@ -1,6 +1,6 @@
 namespace SpaceMonopoly.Core.Ai;
 
-public enum AiLevel { Easy, Medium, Hard }
+public enum AiLevel { Easy, Medium, Normal, Hard }
 
 /// <summary>
 /// Built-in computer opponent. Strategy follows the hints in the original documentation:
@@ -9,6 +9,7 @@ public enum AiLevel { Easy, Medium, Hard }
 /// </summary>
 /// <remarks>
 /// Easy mostly plays at random. Medium judges each square by its immediate result and never sells.
+/// Normal looks ahead like Hard but plays its second-best square some of the time, and trades like Medium.
 /// Hard simulates every square plus its follow-up trades and compares itself against the leading opponent.
 /// </remarks>
 public sealed class RuleBasedAi : IAiPlayer
@@ -22,6 +23,9 @@ public sealed class RuleBasedAi : IAiPlayer
     }
 
     public AiLevel Level { get; }
+
+    /// <summary>Normal: how often it plays its second-best square instead of its best (S9). Adaptive difficulty moves it.</summary>
+    public double SecondBestChance { get; set; } = 0.3;
 
     public string? LastComment => null;
 
@@ -55,8 +59,8 @@ public sealed class RuleBasedAi : IAiPlayer
         if (Level == AiLevel.Easy && _rng.NextDouble() < 0.6)
             return legal[_rng.Next(legal.Count)];
 
-        Pos best = legal[0];
-        double bestScore = double.NegativeInfinity;
+        Pos best = legal[0], second = legal[0];
+        double bestScore = double.NegativeInfinity, secondScore = double.NegativeInfinity;
         foreach (var square in legal)
         {
             var sim = game.Clone();
@@ -66,24 +70,30 @@ public sealed class RuleBasedAi : IAiPlayer
             {
                 AiLevel.Easy => (double)sim.NetWorth(me),
                 AiLevel.Medium => Heuristics.RelativeOutlook(sim, me, opponentWeight: 0.25),
-                _ => ScoreAfterTrades(sim, me),
+                AiLevel.Normal => ScoreAfterTrades(sim, me, opponentWeight: 0.25),
+                _ => ScoreAfterTrades(sim, me, opponentWeight: 0.5),
             };
             // Small random tie-breaker so equal squares aren't always picked in the same order.
             score += _rng.NextDouble() * 0.01;
 
             if (score > bestScore)
             {
-                bestScore = score;
-                best = square;
+                (second, secondScore) = (best, bestScore);
+                (best, bestScore) = (square, score);
+            }
+            else if (score > secondScore)
+            {
+                (second, secondScore) = (square, score);
             }
         }
+        if (Level == AiLevel.Normal && legal.Count > 1 && _rng.NextDouble() < SecondBestChance) return second;
         return best;
     }
 
-    private double ScoreAfterTrades(Game sim, int me)
+    private double ScoreAfterTrades(Game sim, int me, double opponentWeight)
     {
         TradeExecutor.Apply(sim, PlanTrades(sim));
-        return Heuristics.RelativeOutlook(sim, me, opponentWeight: 0.5);
+        return Heuristics.RelativeOutlook(sim, me, opponentWeight);
     }
 
     public IReadOnlyList<TradeOrder> PlanTrades(Game game)
@@ -93,8 +103,8 @@ public sealed class RuleBasedAi : IAiPlayer
         return Level switch
         {
             AiLevel.Easy => PlanEasyTrades(game, existing),
-            AiLevel.Medium => PlanInvestment(game, sellThreshold: null),
-            _ => PlanInvestment(game, sellThreshold: 0.6),
+            AiLevel.Medium or AiLevel.Normal => PlanInvestment(game, sellThreshold: null, readEvents: false),
+            _ => PlanInvestment(game, sellThreshold: HardSells(game) ? HardSellThreshold : null, readEvents: true),
         };
     }
 
@@ -121,14 +131,24 @@ public sealed class RuleBasedAi : IAiPlayer
     /// Sells holdings that are growing much slower than the best company (Hard only), then spends
     /// as much as possible on the best expected return, then the next best with what's left.
     /// </summary>
-    private static List<TradeOrder> PlanInvestment(Game game, double? sellThreshold)
+    /// <summary>Hard sells holdings growing slower than this share of the best company's rate.</summary>
+    private const double HardSellThreshold = 0.6;
+
+    /// <summary>
+    /// Whether Hard sells to move money into faster-growing companies. Measured with the balance tool: it helps in
+    /// Modern and in two-player Classic games, but in Classic with three or more players it let Medium win most games
+    /// (Hard 32%, Medium 49% against Hard 49%, Medium 27% without selling).
+    /// </summary>
+    private static bool HardSells(Game game) => game.IsModern || game.Players.Count <= 2;
+
+    private static List<TradeOrder> PlanInvestment(Game game, double? sellThreshold, bool readEvents)
     {
         var orders = new List<TradeOrder>();
         var me = game.CurrentPlayer;
         var ratio = Heuristics.ReturnPerUnit(game, game.CurrentWorld);
 
         // Hard reads next round's announced event: it avoids a Pirate Raid's target and buys ahead of a Market Boom.
-        if (sellThreshold is not null)
+        if (readEvents)
         {
             var effect = Heuristics.NextEventEffect(game);
             for (int c = 0; c < ratio.Length; c++) ratio[c] += effect[c];

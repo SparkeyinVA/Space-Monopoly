@@ -49,6 +49,7 @@ public static class AiFactory
     {
         PlayerKind.ComputerEasy => new RuleBasedAi(AiLevel.Easy, seed),
         PlayerKind.ComputerMedium => new RuleBasedAi(AiLevel.Medium, seed),
+        PlayerKind.ComputerNormal => new RuleBasedAi(AiLevel.Normal, seed),
         PlayerKind.ComputerHard => new RuleBasedAi(AiLevel.Hard, seed),
         PlayerKind.Claude => new ClaudeCodeAi(claudeSettings, new RuleBasedAi(AiLevel.Hard, seed)),
         _ => throw new ArgumentException($"{kind} is not a computer player.", nameof(kind)),

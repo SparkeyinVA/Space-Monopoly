@@ -43,7 +43,7 @@ public static class ModernRules
     public const int PlanetOdds = 12;
 }
 
-public enum PlayerKind { Human, ComputerEasy, ComputerMedium, ComputerHard, Claude }
+public enum PlayerKind { Human, ComputerEasy, ComputerMedium, ComputerNormal, ComputerHard, Claude }
 
 public static class PlayerKindExtensions
 {
@@ -54,6 +54,7 @@ public static class PlayerKindExtensions
         PlayerKind.Human => "Human",
         PlayerKind.ComputerEasy => "Computer (Easy)",
         PlayerKind.ComputerMedium => "Computer (Medium)",
+        PlayerKind.ComputerNormal => "Computer (Normal)",
         PlayerKind.ComputerHard => "Computer (Hard)",
         PlayerKind.Claude => "Claude (via Claude Code)",
         _ => kind.ToString(),

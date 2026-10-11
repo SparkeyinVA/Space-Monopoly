@@ -9,7 +9,7 @@ internal sealed class NewGameForm : Form
     private const int MaxPlayers = 8;
 
     private static readonly PlayerKind[] Kinds =
-        [PlayerKind.Human, PlayerKind.ComputerEasy, PlayerKind.ComputerMedium, PlayerKind.ComputerHard, PlayerKind.Claude];
+        [PlayerKind.Human, PlayerKind.ComputerEasy, PlayerKind.ComputerMedium, PlayerKind.ComputerNormal, PlayerKind.ComputerHard, PlayerKind.Claude];
 
     private readonly TextBox _name = new() { MaxLength = 15, Width = 150 };
     private readonly ComboBox _kind = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 180 };

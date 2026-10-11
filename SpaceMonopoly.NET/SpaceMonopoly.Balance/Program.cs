@@ -30,6 +30,8 @@ Console.WriteLine("== Hard, Hard, Hard (headline: gap and comebacks) ==");
 Report.Print(Simulator.Run(type, GridSize.Medium, [AiLevel.Hard, AiLevel.Hard, AiLevel.Hard], options.Games, options.Seed, options.Chaos));
 Console.WriteLine();
 Console.WriteLine("== Strength, one-on-one ==");
+Report.PrintWinRates(Simulator.Run(type, GridSize.Medium, [AiLevel.Hard, AiLevel.Normal], options.Games, options.Seed, options.Chaos), "Hard v Normal");
+Report.PrintWinRates(Simulator.Run(type, GridSize.Medium, [AiLevel.Normal, AiLevel.Medium], options.Games, options.Seed, options.Chaos), "Normal v Medium");
 Report.PrintWinRates(Simulator.Run(type, GridSize.Medium, [AiLevel.Hard, AiLevel.Medium], options.Games, options.Seed, options.Chaos), "Hard v Medium");
 Report.PrintWinRates(Simulator.Run(type, GridSize.Medium, [AiLevel.Medium, AiLevel.Easy], options.Games, options.Seed, options.Chaos), "Medium v Easy");
 Console.WriteLine();
@@ -148,6 +150,7 @@ internal static class Simulator
     {
         AiLevel.Easy => PlayerKind.ComputerEasy,
         AiLevel.Medium => PlayerKind.ComputerMedium,
+        AiLevel.Normal => PlayerKind.ComputerNormal,
         _ => PlayerKind.ComputerHard,
     };
 }
