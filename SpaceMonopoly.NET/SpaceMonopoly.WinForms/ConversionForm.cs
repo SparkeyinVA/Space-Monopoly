@@ -41,6 +41,7 @@ internal sealed class ConversionForm : Form
         intro.Dock = DockStyle.Top;
 
         _shares.Maximum = (decimal)most;
+        _shares.Font = Font;   // F16: keep the amount box the same size as the rest of the dialog
         _shares.ValueChanged += (_, _) => UpdateSummary(currency, price);
         var max = Ui.Button("Max", (_, _) => _shares.Value = _shares.Maximum, 60);
         var row = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(10, 4, 10, 4), WrapContents = false };

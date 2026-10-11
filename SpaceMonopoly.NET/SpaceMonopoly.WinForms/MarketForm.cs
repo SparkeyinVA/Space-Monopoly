@@ -55,6 +55,12 @@ internal sealed class MarketForm : Form
         KeyPreview = true;
 
         BuildColumns();
+        // F16: the grid's editing box isn't scaled for the screen like the rest of the window, so typed amounts
+        // came out tiny. Give the cells and the editing box the window's (scaled) font explicitly.
+        _grid.Font = Font;
+        _grid.DefaultCellStyle.Font = Font;
+        _grid.ColumnHeadersDefaultCellStyle.Font = Font;
+        _grid.EditingControlShowing += (_, e) => e.Control.Font = e.CellStyle.Font ?? Font;
         _grid.CellEndEdit += (_, _) => ReadAmounts();
         _grid.CellContentClick += (_, e) => RowButton(e.RowIndex, e.ColumnIndex);
         _grid.DataError += (_, e) => e.ThrowException = false;

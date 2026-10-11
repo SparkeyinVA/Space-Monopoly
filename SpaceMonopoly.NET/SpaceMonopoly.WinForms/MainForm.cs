@@ -351,15 +351,13 @@ internal sealed class MainForm : Form
         if (InProgress) return;
         var today = DateTime.Today;
         string name = _lastPlayers.FirstOrDefault(p => p.Kind == PlayerKind.Human)?.Name ?? "You";
-        if (_settings.GridSize != GridSize.Medium)
-        {
-            _settings = _settings with { GridSize = GridSize.Medium };
-            _storage.SaveSettings(_settings);
-        }
         _dailyDate = today;
+        // F15: the same game for everyone today: fixed rules (not the player's Preferences) and the medium grid,
+        // without changing the player's own grid size.
         await StartGame(
             [new(name, PlayerKind.Human), new("Hard", PlayerKind.ComputerHard, Personality.Raider), new("Normal", PlayerKind.ComputerNormal, Personality.Tycoon)],
-            GameType.Modern, Chaos.Standard, advisor: false, adaptive: false, Replay.DailyBoard(today), Replay.DailySeed(today));
+            GameType.Modern, Chaos.Standard, advisor: false, adaptive: false, Replay.DailyBoard(today), Replay.DailySeed(today),
+            new GameRules { Chaos = Chaos.Standard }, GridSpec.For(GridSize.Medium));
         var best = _storage.LoadDailyBests().GetValueOrDefault(today.ToString("yyyy-MM-dd"));
         Log($"Daily Challenge for {today:D}: everyone gets the same board, squares and opponents today." +
             (best > 0 ? $" Your best today: {Currency.Format(best)}." : ""));
@@ -368,8 +366,9 @@ internal sealed class MainForm : Form
     private DateTime? _dailyDate;
 
     private async Task StartGame(IReadOnlyList<PlayerSetup> players, GameType type, Chaos chaos, bool advisor, bool adaptive,
-        Board? fixedBoard = null, int? seed = null)
+        Board? fixedBoard = null, int? seed = null, GameRules? rules = null, GridSpec? gridSpec = null)
     {
+        var spec = gridSpec ?? Spec;
         _adaptiveStep = adaptive ? _settings.AdaptiveStep : null;
         var step = AdaptiveDifficulty.At(_settings.AdaptiveStep);
         // Adaptive difficulty: built-in computer players play at the current step (Claude players are unchanged).
@@ -381,8 +380,9 @@ internal sealed class MainForm : Form
             _board = fixedBoard;
             _boardPlanetOdds = PlanetOddsFor(type);
         }
-        // Modern boards have more planets. Switching between Modern and the 2001 rules draws a new grid.
-        else if (_boardPlanetOdds != PlanetOddsFor(type))
+        // Modern boards have more planets. Switching between Modern and the 2001 rules draws a new grid, and so does a
+        // board left at another size (after a Daily Challenge, which is always on the medium grid).
+        else if (_boardPlanetOdds != PlanetOddsFor(type) || _board.Width != spec.Width || _board.Height != spec.Height)
         {
             _board = NewBoard(_settings.GridSize);
             Log(type == GameType.Modern
@@ -391,7 +391,7 @@ internal sealed class MainForm : Form
         }
 
         // The game starts from the planets on the current grid; any companies left from the last game are cleared.
-        _game = new Game(Spec, _board, setups.Select(p => (p.Name, p.Kind)), type, _settings.Rules with { Chaos = chaos }, seed);
+        _game = new Game(spec, _board, setups.Select(p => (p.Name, p.Kind)), type, rules ?? _settings.Rules with { Chaos = chaos }, seed);
         _personalities = setups.Select(p => p.Personality ?? Personalities.Random(_rng)).ToArray();
         _advisorEnabled = advisor;
         _advisorUses = new int[_game.Players.Count];
@@ -406,8 +406,8 @@ internal sealed class MainForm : Form
         string goes = $"Each player gets {_game.GoesPerPlayer} goes";
         if (_game.GoesReduced)
             goes += $" (fewer than the usual {_game.MaxGoes}, so that everyone's goes fit on the board)";
-        Log($"New {_game.Type.ToString().ToLowerInvariant()} game on the {Spec.Label.ToLowerInvariant()} grid: {who}. " +
-            $"{goes}, and there can be up to {Spec.Companies} companies.");
+        Log($"New {_game.Type.ToString().ToLowerInvariant()} game on the {spec.Label.ToLowerInvariant()} grid: {who}. " +
+            $"{goes}, and there can be up to {spec.Companies} companies.");
         if (_game.IsModern)
             Log($"Modern rules: you hold a hand of {ModernRules.HandSize} squares (swap one a turn, or take a whole new hand once per game). Growth raises share prices but pays " +
                 $"no dividends. Buy up to {ModernRules.BuyLimitPerTurn} shares a turn; each company has {ModernRules.SharesPerCompany:N0}. " +
