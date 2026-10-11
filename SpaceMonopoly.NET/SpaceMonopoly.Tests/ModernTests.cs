@@ -540,4 +540,13 @@ public class ModernTests
         Assert.Contains("bonus", p1);
         Assert.Null(EventText.MergerSummaryFor(game, merger, events, 2, Currency.Default));   // P2 held neither company
     }
+
+    [Fact]
+    public void No_conversion_is_offered_when_the_money_cannot_buy_a_survivor_share()
+    {
+        var (game, merger) = MergeBIntoA(1, 0);          // P1 is paid for one Betelguese share, less than an Atlantis share
+        var row = merger.Rows.Single(r => r.Player == 1);
+        Assert.True(row.Total > 0 && row.Total < game.Companies[0].Value);
+        Assert.Empty(game.PendingConversions);
+    }
 }

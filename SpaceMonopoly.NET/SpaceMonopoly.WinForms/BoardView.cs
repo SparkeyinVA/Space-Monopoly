@@ -22,7 +22,9 @@ internal sealed class BoardView : Control
     private IReadOnlyList<ChoiceMark> _marks = [];
     private Pos? _marked;
     private int _flashIndex;
-    private readonly ToolTip _tip = new() { InitialDelay = 150, ReshowDelay = 50, AutoPopDelay = 30000 };
+    // ShowAlways: without it the tooltip shows only while the main window is active, and stopped appearing after a
+    // dialog or another window had taken the focus (F11).
+    private readonly ToolTip _tip = new() { InitialDelay = 150, ReshowDelay = 50, AutoPopDelay = 30000, ShowAlways = true };
     private int _tipChoice = -1;
 
     /// <summary>What an offered square would do: its mark, the company colour behind it (if any) and a description.</summary>
@@ -47,6 +49,21 @@ internal sealed class BoardView : Control
     public bool AcceptClicks { get; set; }
 
     public event EventHandler<Pos>? SquareClicked;
+
+    private Pos? _highlight;
+
+    /// <summary>A square to pick out (the row the mouse is over in the "Your hand" list, F13).</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public Pos? Highlight
+    {
+        get => _highlight;
+        set
+        {
+            if (_highlight == value) return;
+            _highlight = value;
+            Invalidate();
+        }
+    }
 
     /// <summary>Raised when an offered square is right-clicked (Modern: swap it for a new one).</summary>
     public event EventHandler<Pos>? SquareRightClicked;
@@ -167,6 +184,13 @@ internal sealed class BoardView : Control
             var p = _choices[i];
             var r = new RectangleF(left + p.X * cell, top + p.Y * cell, cell, cell);
             DrawChoice(g, r, i == flashing, i + 1, i < _marks.Count ? _marks[i] : null, numberFont, cornerFont);
+        }
+
+        if (_highlight is Pos h)
+        {
+            var r = new RectangleF(left + h.X * cell, top + h.Y * cell, cell, cell);
+            using var glow = new Pen(Color.FromArgb(200, 255, 255, 255), Math.Max(3f, cell / 6f));
+            g.DrawRectangle(glow, r.X - 2, r.Y - 2, r.Width + 4, r.Height + 4);
         }
 
         if (_marked is Pos m)

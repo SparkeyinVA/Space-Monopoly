@@ -390,6 +390,8 @@ public sealed partial class Game
         _choices = [];
         _offers = [];
         Act(p, events);
+        // F14: only offer a conversion that can buy at least one survivor share.
+        _offers.RemoveAll(o => !Companies[o.Survivor].Exists || o.Owed < Companies[o.Survivor].Value || SharesLeft(o.Survivor) == 0);
         Phase = GamePhase.Trading;
 
         // Modern: play one square, then draw one.

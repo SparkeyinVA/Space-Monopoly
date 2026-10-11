@@ -35,8 +35,9 @@ public static class RulesText
         Line("YOUR TURN");
         Line(modern
             ? $"You hold a hand of {ModernRules.HandSize} squares that only you can see (they flash on the board). Play one, then you draw a new one. " +
-              "Squares that can no longer be played are replaced automatically. Before you play you may swap one square (right-click it), and once per " +
-              "game you may Prospect: throw away your whole hand and draw a new one."
+              "Squares that can no longer be played are replaced automatically. Your hand is listed in the side panel: each square shows what it would do, with Play and Swap buttons. Before you play " +
+              "you may swap one square a turn (Swap, or right-click it on the board), and once per game you may take a New hand: " +
+              "throw away all your squares and draw new ones."
             : $"{Game.ChoiceCount} squares are offered each turn (they flash on the board). Click one of them.");
         Line("Each square is marked with what it will do: a company's letter if it grows that company, M for a merger, + to found a new company, " +
              "or a star if nothing happens. Point at a square to see the change in share price and in each player's net worth.");

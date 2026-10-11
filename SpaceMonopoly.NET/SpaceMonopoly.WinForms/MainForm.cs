@@ -33,6 +33,11 @@ internal sealed class MainForm : Form
     private readonly Label _moneyLabel = Ui.Label("", 14f, FontStyle.Bold);
     private readonly Label _eventLabel = Ui.Label("");
     private readonly Label _status = Ui.Label("");
+
+    // F13: the player's hand, one row per square with what it does and Play / Swap buttons, plus New hand (F12).
+    private readonly TableLayoutPanel _handPanel = new() { AutoSize = true, ColumnCount = 3, Margin = new Padding(0, 4, 0, 0), Visible = false };
+    private readonly Button _newHand = new() { AutoSize = true, Margin = new Padding(2) };
+    private string _handKey = "";
     private readonly CompanyButton[] _companyButtons = new CompanyButton[Company.MaxCount];
     private readonly Panel[] _companyDots = new Panel[Company.MaxCount];
     // Not auto-sized: an auto-sized table grows to fit the button text and pushes the second column out of view.
@@ -48,7 +53,7 @@ internal sealed class MainForm : Form
     private readonly GroupBox _companyBox = new() { Text = "Companies (click for details and trading)", Dock = DockStyle.Fill, Padding = new Padding(6) };
     private int _companySlots = -1;
     private readonly Button _endTurn;
-    private readonly Button _prospect;
+    private readonly FlowLayoutPanel _info = new() { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
     private readonly Button _market;
     private readonly ToolStripMenuItem _fast;
     private const int FastDelayMs = 150;
@@ -132,26 +137,16 @@ internal sealed class MainForm : Form
             Margin = new Padding(4, 8, 4, 8),
         };
         _endTurn.Click += async (_, _) => await HumanEndsTurnAsync();
-        _prospect = new Button
-        {
-            Text = "Prospect",
-            Dock = DockStyle.Fill,
-            Margin = new Padding(4, 8, 4, 8),
-            Visible = false,
-        };
-        _prospect.Click += (_, _) => HumanProspects();
-        new ToolTip().SetToolTip(_prospect, "Throw away your hand and draw new squares. You can do this once per game, before you play a square.");
         _market = new Button { Text = "&Market", Dock = DockStyle.Fill, Margin = new Padding(4, 8, 4, 8), Enabled = false };
         _market.Click += (_, _) => OpenMarket();
-        new ToolTip().SetToolTip(_market, "Buy and sell every company in one window (M).");
+        Ui.Tip(_market, "Buy and sell every company in one window (M).");
         _advisor = new Button { Text = "&Advisor", Dock = DockStyle.Fill, Margin = new Padding(4, 8, 4, 8), Visible = false };
         _advisor.Click += (_, _) => ShowAdvice();
-        new ToolTip().SetToolTip(_advisor, "What would the Hard computer player do now, and why? (A)");
+        Ui.Tip(_advisor, "What would the Hard computer player do now, and why? (A)");
         _turnButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 0));
         _turnButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 0));
         _turnButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
         _turnButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70));
-        _turnButtons.Controls.Add(_prospect, 0, 0);
         _turnButtons.Controls.Add(_advisor, 1, 0);
         _turnButtons.Controls.Add(_market, 2, 0);
         _turnButtons.Controls.Add(_endTurn, 3, 0);
@@ -163,9 +158,11 @@ internal sealed class MainForm : Form
         side.RowStyles.Add(new RowStyle(SizeType.Absolute));       // companies
         side.RowStyles.Add(new RowStyle(SizeType.Absolute));       // end turn
         side.RowStyles.Add(new RowStyle(SizeType.Absolute));       // players (sized in SizePlayersBox)
-        side.RowStyles.Add(new RowStyle(SizeType.Percent, 100));   // log
+        side.RowStyles.Add(new RowStyle(SizeType.Absolute, 140));  // log (sized in SizeLog: the space left, at least a minimum)
+        side.AutoScroll = true;   // when everything doesn't fit, the side panel scrolls instead of hiding the players and log
+        side.Resize += (_, _) => SizeLog();
 
-        var info = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
+        var info = _info;
         // Long labels wrap instead of widening the side panel past the window edge.
         _goLabel.MaximumSize = _playerLabel.MaximumSize = new Size(330, 0);
         _status.MaximumSize = new Size(300, 0);
@@ -173,7 +170,11 @@ internal sealed class MainForm : Form
         _kindLabel.MaximumSize = new Size(330, 0);
         _eventLabel.ForeColor = Color.FromArgb(150, 60, 0);
         _eventLabel.MaximumSize = new Size(330, 0);
-        info.Controls.AddRange([_goLabel, _eventLabel, _playerLabel, _kindLabel, _moneyLabel, _status]);
+        info.Controls.AddRange([_goLabel, _eventLabel, _playerLabel, _kindLabel, _moneyLabel, _status, _handPanel]);
+        _handPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _handPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        _handPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        _newHand.Click += (_, _) => HumanProspects();
 
         for (int c = 0; c < Company.MaxCount; c++)
         {
@@ -358,7 +359,7 @@ internal sealed class MainForm : Form
         Log($"New {_game.Type.ToString().ToLowerInvariant()} game on the {Spec.Label.ToLowerInvariant()} grid: {who}. " +
             $"{goes}, and there can be up to {Spec.Companies} companies.");
         if (_game.IsModern)
-            Log($"Modern rules: you hold a hand of {ModernRules.HandSize} squares (Prospect swaps it once per game). Growth raises share prices but pays " +
+            Log($"Modern rules: you hold a hand of {ModernRules.HandSize} squares (swap one a turn, or take a whole new hand once per game). Growth raises share prices but pays " +
                 $"no dividends. Buy up to {ModernRules.BuyLimitPerTurn} shares a turn; each company has {ModernRules.SharesPerCompany:N0}. " +
                 $"In a merger the two largest holders of the company taken over get {ModernRules.LargestHolderBonus}× and " +
                 $"{ModernRules.SecondHolderBonus}× its share price as a bonus. Cash earns {ModernRules.InterestPercent}% interest each turn. " +
@@ -484,7 +485,7 @@ internal sealed class MainForm : Form
         var square = await ai.ChooseSquareAsync(game, token);
         token.ThrowIfCancellationRequested();
         if (couldProspect && game.HasProspected(game.CurrentPlayerIndex))
-            Log($"{player.Name} prospected: threw away their hand and drew new squares.");
+            Log($"{player.Name} took a new hand: threw away all their squares and drew new ones.");
 
         // Show which square was picked before playing it. A Modern hand stays private: only the chosen square shows.
         if (game.IsModern)
@@ -548,15 +549,81 @@ internal sealed class MainForm : Form
         RefreshAll();
     }
 
+    /// <summary>
+    /// F13: lists the human's hand in the side panel, each square with what it would do and Play / Swap buttons,
+    /// how many swaps are left this turn and the New hand button (F12). Pointing at a row picks out its square.
+    /// </summary>
+    private void ShowHand(Game? game, bool inProgress)
+    {
+        bool show = game is not null && inProgress && game.IsModern && !_computerBusy && game.CurrentPlayer.IsHuman && game.Phase == GamePhase.ChoosingSquare;
+        string key = show ? $"{game!.CurrentPlayerIndex}|{string.Join(";", game.Choices)}|{game.CanSwap}|{game.CanProspect}" : "";
+        if (key == _handKey) return;
+        _handKey = key;
+
+        _handPanel.SuspendLayout();
+        foreach (Control c in _handPanel.Controls.Cast<Control>().ToList())
+            if (c != _newHand) c.Dispose();
+        _handPanel.Controls.Clear();
+        _handPanel.RowStyles.Clear();
+        _handPanel.Visible = show;
+        _boardView.Highlight = null;
+        if (!show)
+        {
+            _handPanel.ResumeLayout();
+            return;
+        }
+
+        var header = Ui.Label($"Your hand · swaps left this turn: {(game!.CanSwap ? 1 : 0)}", 9f, FontStyle.Bold);
+        _handPanel.Controls.Add(header, 0, 0);
+        _handPanel.SetColumnSpan(header, 3);
+
+        var previews = Previews(game);
+        for (int i = 0; i < game.Choices.Count; i++)
+        {
+            var square = game.Choices[i];
+            var preview = previews[i];
+            var text = Ui.Label($"{i + 1}. {preview.Summary(Currency, game.CurrentPlayerIndex)}" + (preview.Allowed is null ? "" : " (not allowed)"));
+            text.MaximumSize = new Size(LogicalToDeviceUnits(230), 0);
+            text.Anchor = AnchorStyles.Left;
+            var play = new Button { Text = "Play", AutoSize = true, Margin = new Padding(2), Enabled = preview.Allowed is null };
+            var swap = new Button { Text = "Swap", AutoSize = true, Margin = new Padding(2), Enabled = game.CanSwap };
+            play.Click += (_, _) => HumanChooses(square);
+            swap.Click += (_, _) => HumanSwaps(square);
+            Ui.Tip(text, preview.Details(game, Currency));
+            Ui.Tip(swap, "Throw this square away and draw a new one (one swap a turn). Right-clicking the square does the same.");
+            foreach (Control c in new Control[] { text, play, swap })
+            {
+                c.MouseEnter += (_, _) => _boardView.Highlight = square;
+                c.MouseLeave += (_, _) => { if (_boardView.Highlight == square) _boardView.Highlight = null; };
+            }
+            _handPanel.Controls.Add(text, 0, i + 1);
+            _handPanel.Controls.Add(play, 1, i + 1);
+            _handPanel.Controls.Add(swap, 2, i + 1);
+        }
+
+        // F12: "New hand" instead of "Prospect", with the explanation on screen.
+        _newHand.Text = game.CanProspect ? "New hand (1 left)" : "New hand (used)";
+        _newHand.Enabled = game.CanProspect;
+        var explain = Ui.Label("New hand: throw away all your squares and draw new ones, once per game.");
+        explain.MaximumSize = new Size(LogicalToDeviceUnits(230), 0);
+        explain.ForeColor = SystemColors.GrayText;
+        explain.Anchor = AnchorStyles.Left;
+        int last = game.Choices.Count + 1;
+        _handPanel.Controls.Add(explain, 0, last);
+        _handPanel.Controls.Add(_newHand, 1, last);
+        _handPanel.SetColumnSpan(_newHand, 2);
+        _handPanel.ResumeLayout();
+    }
+
     private void HumanProspects()
     {
         var game = _game;
         if (game is null || _computerBusy || !game.CanProspect || !game.CurrentPlayer.IsHuman) return;
-        if (MessageBox.Show(this, "Throw away your hand and draw new squares? You can only do this once per game.",
-                "Prospect", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+        if (MessageBox.Show(this, "Throw away your whole hand and draw new squares? You can only do this once per game.",
+                "New hand", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
             return;
         game.Prospect();
-        Log($"{game.CurrentPlayer.Name} prospected: threw away their hand and drew new squares.");
+        Log($"{game.CurrentPlayer.Name} took a new hand: threw away all their squares and drew new ones.");
         RefreshAll();
     }
 
@@ -608,7 +675,7 @@ internal sealed class MainForm : Form
         _news.Text = text;
         _newsAge = 0;
         _news.ForeColor = Color.Gold;
-        new ToolTip().SetToolTip(_news, text);
+        Ui.Tip(_news, text);
         _newsTimer.Start();
     }
 
@@ -893,12 +960,10 @@ internal sealed class MainForm : Form
 
             if (!inProgress) SetStatus("Choose Game > New Game to play again.");
             else if (!_computerBusy && player.IsHuman && game.Phase == GamePhase.ChoosingSquare)
-                SetStatus((game.IsModern
-                              ? "Play a square from your hand" + (game.CanSwap ? " (right-click one to swap it)" : "") +
-                                (game.CanProspect ? ", or Prospect for a new hand" : "")
-                              : "Choose a square") +
-                          " (point at one for details):" + Environment.NewLine +
-                          string.Join(Environment.NewLine, Previews(game).Select((m, i) => $"{i + 1}. {m.Summary(Currency, game.CurrentPlayerIndex)}" + (m.Allowed is null ? "" : " (not allowed)"))));
+                SetStatus(game.IsModern
+                    ? "Play a square from your hand below, or click it on the board. Point at a square for details."
+                    : "Choose a square (point at one for details):" + Environment.NewLine +
+                      string.Join(Environment.NewLine, Previews(game).Select((m, i) => $"{i + 1}. {m.Summary(Currency, game.CurrentPlayerIndex)}" + (m.Allowed is null ? "" : " (not allowed)"))));
             else if (!_computerBusy && player.IsHuman)
                 SetStatus("Buy and sell shares by clicking a company, then press End Turn.");
         }
@@ -918,14 +983,13 @@ internal sealed class MainForm : Form
         }
 
         _endTurn.Enabled = inProgress && !_computerBusy && game!.Phase == GamePhase.Trading && game.CurrentPlayer.IsHuman;
+        ShowHand(game, inProgress);
         bool modern = game?.IsModern == true && inProgress;
-        _prospect.Visible = modern;
-        _prospect.Enabled = modern && !_computerBusy && game!.CurrentPlayer.IsHuman && game.CanProspect;
         _market.Enabled = inProgress && !_computerBusy && game!.Phase == GamePhase.Trading && game.CurrentPlayer.IsHuman;
         bool advisor = inProgress && _advisorEnabled;
         _advisor.Visible = advisor;
         _advisor.Enabled = advisor && !_computerBusy && game!.CurrentPlayer.IsHuman;
-        _turnButtons.ColumnStyles[0].Width = modern ? 24 : 0;
+        _turnButtons.ColumnStyles[0].Width = 0;
         _turnButtons.ColumnStyles[1].Width = advisor ? 22 : 0;
         _turnButtons.ColumnStyles[2].Width = 22;
         _turnButtons.ColumnStyles[3].Width = 100 - _turnButtons.ColumnStyles[0].Width - _turnButtons.ColumnStyles[1].Width - 22;
@@ -960,5 +1024,15 @@ internal sealed class MainForm : Form
         var box = _playerList.Parent!;
         int height = listHeight + box.DisplayRectangle.Top + box.Padding.Bottom + LogicalToDeviceUnits(2) + box.Margin.Vertical;
         if ((int)_side.RowStyles[3].Height != height) _side.RowStyles[3].Height = height;
+        SizeLog();
+    }
+
+    /// <summary>Gives the game log the space the other rows leave, but never less than a minimum (then the panel scrolls).</summary>
+    private void SizeLog()
+    {
+        int others = _info.GetPreferredSize(new Size(_side.ClientSize.Width, 0)).Height + _info.Margin.Vertical
+                     + (int)_side.RowStyles[1].Height + (int)_side.RowStyles[2].Height + (int)_side.RowStyles[3].Height + _side.Padding.Vertical;
+        int height = Math.Max(LogicalToDeviceUnits(140), _side.ClientSize.Height - others - LogicalToDeviceUnits(4));
+        if ((int)_side.RowStyles[4].Height != height) _side.RowStyles[4].Height = height;
     }
 }

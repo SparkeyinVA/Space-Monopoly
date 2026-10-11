@@ -7,6 +7,14 @@ internal static class Ui
     /// Creates a dialog with layout suspended. Callers add controls, then call ResumeLayout(false) before
     /// showing it, which is when Windows applies high-DPI scaling.
     /// </summary>
+    /// <summary>
+    /// One tooltip for the whole program. ShowAlways is on because otherwise a tooltip shows only while its window is
+    /// active, so it stopped appearing after another window had taken the focus (F11).
+    /// </summary>
+    public static readonly ToolTip Tips = new() { ShowAlways = true, AutoPopDelay = 20000 };
+
+    public static void Tip(Control control, string text) => Tips.SetToolTip(control, text);
+
     public static Form Dialog(string title, int width, int height)
     {
         var form = new Form();

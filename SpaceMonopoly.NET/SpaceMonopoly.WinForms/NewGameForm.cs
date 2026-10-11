@@ -46,7 +46,7 @@ internal sealed class NewGameForm : Form
         _personality.Items.AddRange(PersonalityChoices);
         _personality.SelectedIndex = 0;
         _personality.Enabled = false;
-        new ToolTip().SetToolTip(_personality, "How a computer or Claude player likes to play: Raider goes after mergers and majority bonuses, " +
+        Ui.Tip(_personality, "How a computer or Claude player likes to play: Raider goes after mergers and majority bonuses, " +
                                                "Tycoon founds and holds companies, Hoarder keeps cash and avoids risk, Gambler bets big on one company.");
 
         _add = Ui.Button("Add", (_, _) => AddPlayer(), 80);

@@ -77,7 +77,7 @@ internal sealed class MarketForm : Form
         var clear = Ui.Button("Clear", (_, _) => { _order.Clear(); Refill(); });
         var advise = Ui.Button("Advisor", (_, _) => { if (advisor is not null) Fill(advisor()); });
         advise.Visible = advisor is not null;
-        new ToolTip().SetToolTip(advise, "Fill in the trades the Hard computer player would make now (counted in the high scores).");
+        Ui.Tip(advise, "Fill in the trades the Hard computer player would make now (counted in the high scores).");
         _confirm = Ui.Button("Confirm trades", (_, _) => Confirm(), 130);
         var close = Ui.Button("Close");
         close.DialogResult = DialogResult.Cancel;

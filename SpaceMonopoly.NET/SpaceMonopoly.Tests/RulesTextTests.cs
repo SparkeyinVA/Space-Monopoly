@@ -9,7 +9,7 @@ public class RulesTextTests
         ["free shares plus cash", "cash dividend", "AND get the same number of shares", "SHARE SPLITS"];
 
     private static readonly string[] ModernOnly =
-        ["your hand", "interest", "Prospect", "secret goal", "convert", "buying allowance"];
+        ["your hand", "interest", "New hand", "secret goal", "convert", "buying allowance"];
 
     [Theory]
     [InlineData(GameType.Classic)]
