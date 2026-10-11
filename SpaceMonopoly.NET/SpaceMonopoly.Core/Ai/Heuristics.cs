@@ -49,8 +49,11 @@ internal static class Heuristics
             growth[survivor] += (absorbedTotal + squareGain) * p;
             foreach (int c in s.Companies.Where(c => c != survivor))
             {
-                // Each absorbed share is paid out at its own price and also becomes a survivor share,
+                // Classic: each absorbed share is paid out at its own price and also becomes a survivor share,
                 // so the holder gains a whole survivor share at its post-merger price.
+                // Modern: it is only bought out at its own price, so the share itself gains nothing
+                // (the majority bonus is valued separately, by who holds the most).
+                if (game.IsModern) continue;
                 double survivorAfter = companies[survivor].Value + absorbedTotal + squareGain;
                 growth[c] += survivorAfter * p;
             }
@@ -97,7 +100,7 @@ internal static class Heuristics
     public static double RelativeOutlook(Game game, int player, double opponentWeight)
     {
         double mine = Outlook(game, player);
-        if (opponentWeight == 0 || game.Players.Count == 1 || game.Type == GameType.Tournament) return mine;
+        if (opponentWeight == 0 || game.Players.Count == 1 || !game.SharedBoard) return mine;
         double best = Enumerable.Range(0, game.Players.Count)
             .Where(i => i != player)
             .Max(i => Outlook(game, i));

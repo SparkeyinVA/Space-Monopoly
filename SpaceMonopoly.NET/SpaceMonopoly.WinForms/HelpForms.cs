@@ -10,11 +10,12 @@ internal static class HelpForms
         GETTING STARTED
         Before you start you'll want a decent grid — one with lots of planets (circles) close together. Use Options > Create New Grid until you like the look of one, and pick a grid size. If it's your first game, use the small grid.
         Then choose Game > New Game, add the players in the order they'll play (each can be a human, a computer at Easy, Medium or Hard, or Claude), pick a game type and click Go!
-          • Classic: everyone uses the same grid and companies (recommended).
-          • Tournament: everyone starts from the same grid but plays on their own copy of it.
+          • Modern: a quicker game (about 15-30 minutes) with new rules — see MODERN RULES below.
+          • Classic: the original 2001 rules. Everyone uses the same grid and companies.
+          • Tournament: the original rules, but everyone starts from the same grid and plays on their own copy of it.
 
         YOUR TURN
-        Five squares are offered each turn (they flash on the board). Click one of them.
+        Five squares are offered each turn (they flash on the board). Click one of them. Each offered square is marked with what it will do: a company's letter if it grows that company, M for a merger, + to found a new company, or a star if nothing happens. Point at a square to see the change in share price and in each player's net worth.
           • Next to a planet or star (but not a company): a new company is founded. You get 5 free shares and cash equal to the starting share price.
           • Next to one company: the company grows. Its share price rises by 100, plus 500 for each planet next to the square, plus 100 for each star (which it absorbs). Every shareholder gets a dividend of shares × rise.
           • Next to two or more companies: they merge (see below).
@@ -32,6 +33,17 @@ internal static class HelpForms
 
         END OF GAME
         Every player gets 80, 120 or 160 goes on the small, medium and large grids. If that many goes wouldn't fit on the board (for example 2 or more players on the small grid), everyone gets fewer so that about three quarters of the board gets used; the game log says how many when the game starts. The game can also end early: once there's no room left anywhere on the board to form a new company, a warning appears, the current round is finished, and then everyone has one more round. In a tournament, this happens as soon as any player's board fills up. Net wealth is your money plus the worth of your shares. A good score earns a place in the high score table.
+
+        MODERN RULES
+        Modern is a shorter game where holding the most shares matters. Everyone shares one board, which has more planets than a Classic board.
+          • 25 rounds.
+          • You hold a hand of 4 squares that only you can see. Play one each turn, then draw a new one. Squares that can no longer be played are replaced automatically. Once per game you can Prospect: throw away your whole hand and draw a new one before you play.
+          • When a company grows, its share price rises, but there is no cash dividend.
+          • Founding a company gives you 3 free shares and no cash.
+          • You can buy up to 100 shares a turn, across all companies. Selling is unlimited.
+          • Each company has 1,000 shares, shared by all players. The company buttons show how many are left. A split doubles everyone's shares and the number left.
+          • In a merger, shares in the company taken over are bought back at its share price; you don't get shares in the bigger company. Its largest shareholder gets a bonus of 10 times its share price, and the second-largest 5 times. Players tied for largest share both bonuses; players tied for second share the second bonus.
+          • Modern scores have their own high score tables.
 
         MULTIPLAYER OPTIONS (Options > Preferences)
           • Force mergers / Force expansion make players take mergers or expansions when offered.

@@ -14,12 +14,13 @@ internal sealed class NewGameForm : Form
     private readonly TextBox _name = new() { MaxLength = 15, Width = 150 };
     private readonly ComboBox _kind = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 180 };
     private readonly ListView _players = Ui.Table(("Name", 140), ("Player type", 170));
-    private readonly RadioButton _classic = new() { Text = "Classic — everyone shares one board (recommended)", AutoSize = true, Checked = true };
+    private readonly RadioButton _modern = new() { Text = "Modern — 25 rounds, a hand of squares, majority bonuses (about 15–30 minutes)", AutoSize = true };
+    private readonly RadioButton _classic = new() { Text = "Classic — the 2001 rules: everyone shares one board", AutoSize = true };
     private readonly RadioButton _tournament = new() { Text = "Tournament — everyone gets their own copy of the same board", AutoSize = true };
     private readonly Button _add, _remove, _up, _down, _go;
     private readonly ClaudeCodeSettings _claudeSettings;
 
-    public NewGameForm(ClaudeCodeSettings claudeSettings, IReadOnlyList<(string Name, PlayerKind Kind)> previous)
+    public NewGameForm(ClaudeCodeSettings claudeSettings, IReadOnlyList<(string Name, PlayerKind Kind)> previous, GameType lastType)
     {
         _claudeSettings = claudeSettings;
         SuspendLayout();
@@ -31,7 +32,7 @@ internal sealed class NewGameForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoScaleDimensions = new SizeF(96f, 96f);
         Font = new Font("Segoe UI", 9f);
-        ClientSize = new Size(620, 470);
+        ClientSize = new Size(620, 500);
 
         foreach (var k in Kinds) _kind.Items.Add(k.Label());
         _kind.SelectedIndex = 0;
@@ -62,9 +63,10 @@ internal sealed class NewGameForm : Form
         var listHolder = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8, 4, 0, 4) };
         listHolder.Controls.Add(_players);
 
-        var typeBox = new GroupBox { Text = "Game type", Dock = DockStyle.Bottom, Height = 80, Padding = new Padding(10, 6, 10, 6) };
+        var typeBox = new GroupBox { Text = "Game type", Dock = DockStyle.Bottom, Height = 104, Padding = new Padding(10, 6, 10, 6) };
         var typeFlow = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown };
-        typeFlow.Controls.AddRange([_classic, _tournament]);
+        typeFlow.Controls.AddRange([_modern, _classic, _tournament]);
+        (lastType switch { GameType.Classic => _classic, GameType.Tournament => _tournament, _ => _modern }).Checked = true;
         typeBox.Controls.Add(typeFlow);
 
         Controls.Add(listHolder);
@@ -87,7 +89,7 @@ internal sealed class NewGameForm : Form
 
     public List<(string Name, PlayerKind Kind)> Players { get; } = [];
 
-    public GameType GameType => _tournament.Checked ? GameType.Tournament : GameType.Classic;
+    public GameType GameType => _tournament.Checked ? GameType.Tournament : _classic.Checked ? GameType.Classic : GameType.Modern;
 
     private void SuggestName()
     {
@@ -166,7 +168,7 @@ internal sealed class NewGameForm : Form
         _go.Enabled = _players.Items.Count > 0;
         _add.Enabled = _name.Text.Trim().Length > 0;
         _tournament.Enabled = _players.Items.Count > 1;
-        if (!_tournament.Enabled) _classic.Checked = true;
+        if (!_tournament.Enabled && _tournament.Checked) _classic.Checked = true;
     }
 
     private void Start()

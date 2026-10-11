@@ -37,6 +37,11 @@ public sealed class Game
     private readonly GameRandom _rng;
     private List<Pos> _choices = [];
 
+    // Modern only: each player's hand of squares, whether they've used their one prospect, and shares bought this turn.
+    private readonly List<Pos>[] _hands;
+    private readonly bool[] _prospected;
+    private BigInteger _boughtThisTurn;
+
     public Game(GridSpec spec, Board startingBoard, IEnumerable<(string Name, PlayerKind Kind)> players,
         GameType type, GameRules rules, int? seed = null)
     {
@@ -47,17 +52,22 @@ public sealed class Game
 
         Spec = spec;
         // Tournament only makes sense with two or more players (Players.cpp).
-        Type = _players.Length == 1 ? GameType.Classic : type;
+        Type = _players.Length == 1 && type == GameType.Tournament ? GameType.Classic : type;
         Rules = rules;
         _rng = GameRandom.FromSeed(seed);
 
         var board = startingBoard.Clone();
         board.ClearPieces();
-        _worlds = Type == GameType.Classic
+        _worlds = SharedBoard
             ? [new World(board, Company.CreateSet(spec.Companies))]
             : _players.Select(_ => new World(board.Clone(), Company.CreateSet(spec.Companies))).ToArray();
 
-        GoesPerPlayer = GoesThatFit(spec, board.CountOf(Board.Empty), Type == GameType.Classic ? _players.Length : 1);
+        GoesPerPlayer = GoesThatFit(MaxGoes, board.CountOf(Board.Empty), SharedBoard ? _players.Length : 1);
+
+        _hands = _players.Select(_ => new List<Pos>()).ToArray();
+        _prospected = new bool[_players.Length];
+        if (IsModern)
+            for (int i = 0; i < _players.Length; i++) FillHand(i);
 
         BeginTurn();
     }
@@ -70,6 +80,9 @@ public sealed class Game
         _players = other._players.Select(p => p.Clone()).ToArray();
         _worlds = other._worlds.Select(w => w.Clone()).ToArray();
         _choices = [.. other._choices];
+        _hands = other._hands.Select(h => new List<Pos>(h)).ToArray();
+        _prospected = (bool[])other._prospected.Clone();
+        _boughtThisTurn = other._boughtThisTurn;
         _rng = other._rng.Fork();
         CurrentPlayerIndex = other.CurrentPlayerIndex;
         Turn = other.Turn;
@@ -81,6 +94,15 @@ public sealed class Game
     public GridSpec Spec { get; }
     public GameType Type { get; }
     public GameRules Rules { get; }
+
+    /// <summary>True for the Modern rules: a hand of squares, limited buying and majority bonuses.</summary>
+    public bool IsModern => Type == GameType.Modern;
+
+    /// <summary>Classic and Modern players share one board; in a tournament everyone has their own.</summary>
+    public bool SharedBoard => Type != GameType.Tournament;
+
+    /// <summary>Goes per player before any reduction to fit the board.</summary>
+    public int MaxGoes => IsModern ? ModernRules.Rounds : Spec.GoesPerPlayer;
     public IReadOnlyList<Player> Players => _players;
     public int CurrentPlayerIndex { get; private set; }
     public Player CurrentPlayer => _players[CurrentPlayerIndex];
@@ -105,13 +127,16 @@ public sealed class Game
     public bool NoMoreCompanies => _finalRound is not null;
 
     /// <summary>True when the board was too small for the grid size's full number of goes.</summary>
-    public bool GoesReduced => GoesPerPlayer < Spec.GoesPerPlayer;
+    public bool GoesReduced => GoesPerPlayer < MaxGoes;
 
     /// <summary>Goes per player that fit on a board with this many empty squares shared by this many players.</summary>
-    public static int GoesThatFit(GridSpec spec, int emptySquares, int playersSharingBoard)
+    public static int GoesThatFit(GridSpec spec, int emptySquares, int playersSharingBoard) =>
+        GoesThatFit(spec.GoesPerPlayer, emptySquares, playersSharingBoard);
+
+    private static int GoesThatFit(int maxGoes, int emptySquares, int playersSharingBoard)
     {
         int fit = (int)(emptySquares * BoardFillLimit) / Math.Max(1, playersSharingBoard);
-        return Math.Clamp(fit, 1, spec.GoesPerPlayer);
+        return Math.Clamp(fit, 1, maxGoes);
     }
 
     public GamePhase Phase { get; private set; }
@@ -123,7 +148,7 @@ public sealed class Game
     public Board Board => CurrentWorld.Board;
     public Company[] Companies => CurrentWorld.Companies;
 
-    public World WorldFor(int player) => Type == GameType.Classic ? _worlds[0] : _worlds[player];
+    public World WorldFor(int player) => SharedBoard ? _worlds[0] : _worlds[player];
 
     /// <summary>Moves left in the game that can affect the current world, including this one.</summary>
     public int RemainingGoes
@@ -142,27 +167,28 @@ public sealed class Game
 
     private void BeginTurn()
     {
-        _choices = GenerateChoices();
+        _boughtThisTurn = 0;
+        _choices = IsModern ? RefreshHand(CurrentPlayerIndex) : GenerateChoices();
         Phase = _choices.Count == 0 ? GamePhase.Over : GamePhase.ChoosingSquare;
+    }
+
+    /// <summary>
+    /// True if the square can be offered: it's empty, and it wouldn't found a company when every company
+    /// is already in play.
+    /// </summary>
+    private bool CanOffer(Pos p, bool canFound)
+    {
+        if (Board[p] != Board.Empty) return false;
+        if (canFound) return true;
+        var s = Board.Survey(p);
+        return !(s.NextToCircleOrDiamond && s.Companies.Count == 0);
     }
 
     /// <summary>Picks up to five empty squares to offer (go() in SMMain.cpp).</summary>
     private List<Pos> GenerateChoices()
     {
-        var board = Board;
         bool canFound = Companies.Any(c => !c.Exists);
-        var candidates = new List<Pos>();
-        foreach (var p in board.AllPositions())
-        {
-            if (board[p] != Board.Empty) continue;
-            if (!canFound)
-            {
-                // With every company in play, a square that would found a company can't be offered.
-                var s = board.Survey(p);
-                if (s.NextToCircleOrDiamond && s.Companies.Count == 0) continue;
-            }
-            candidates.Add(p);
-        }
+        var candidates = Board.AllPositions().Where(p => CanOffer(p, canFound)).ToList();
 
         for (int i = 0; i < Math.Min(ChoiceCount, candidates.Count); i++)
         {
@@ -190,6 +216,70 @@ public sealed class Game
 
         BeginTurn();
         return Phase == GamePhase.Over;
+    }
+
+    // ------------------------------------------------------------------ Modern: hands of squares
+
+    /// <summary>The squares a player holds (Modern). Only show a player their own hand.</summary>
+    public IReadOnlyList<Pos> HandOf(int player) => _hands[player];
+
+    /// <summary>True once a player has used their one prospect.</summary>
+    public bool HasProspected(int player) => _prospected[player];
+
+    /// <summary>True if the current player may still prospect: throw away their hand and draw a new one (once per game).</summary>
+    public bool CanProspect => IsModern && Phase == GamePhase.ChoosingSquare && !_prospected[CurrentPlayerIndex];
+
+    /// <summary>Throws away the current player's hand and draws a new one before they play (once per game).</summary>
+    public void Prospect()
+    {
+        if (!CanProspect) throw new InvalidOperationException("You can prospect only once per game, before you play a square.");
+        _prospected[CurrentPlayerIndex] = true;
+        var old = _hands[CurrentPlayerIndex].ToList();
+        _hands[CurrentPlayerIndex].Clear();
+        FillHand(CurrentPlayerIndex, exclude: old);
+        if (_hands[CurrentPlayerIndex].Count == 0) _hands[CurrentPlayerIndex].AddRange(old); // nothing new to draw
+        _choices = [.. _hands[CurrentPlayerIndex]];
+    }
+
+    /// <summary>True if playing the square would found, grow or merge a company (rather than only place a star).</summary>
+    private bool IsLive(Pos p)
+    {
+        var s = Board.Survey(p);
+        return s.Companies.Count > 0 || s.NextToCircleOrDiamond;
+    }
+
+    /// <summary>Throws away squares that can no longer be played, tops the hand up and returns it.</summary>
+    private List<Pos> RefreshHand(int player)
+    {
+        bool canFound = Companies.Any(c => !c.Exists);
+        _hands[player].RemoveAll(p => !CanOffer(p, canFound));
+        FillHand(player);
+        return [.. _hands[player]];
+    }
+
+    /// <summary>Draws random squares no one holds until the player has a full hand (or none are left).</summary>
+    private void FillHand(int player, IReadOnlyCollection<Pos>? exclude = null)
+    {
+        var hand = _hands[player];
+        int missing = ModernRules.HandSize - hand.Count;
+        if (missing <= 0) return;
+
+        bool canFound = Companies.Any(c => !c.Exists);
+        var held = _hands.SelectMany(h => h).ToHashSet();
+        var open = Board.AllPositions()
+            .Where(p => !held.Contains(p) && (exclude is null || !exclude.Contains(p)) && CanOffer(p, canFound))
+            .ToList();
+        // Draw squares that do something (touch a planet, star or company). Otherwise hands fill up with
+        // squares that only place a star in empty space. Plain squares are drawn only when nothing else is left.
+        var pool = open.Where(IsLive).ToList();
+        if (pool.Count == 0) pool = open;
+        for (int i = 0; i < missing && pool.Count > 0; i++)
+        {
+            int j = _rng.Next(pool.Count);
+            hand.Add(pool[j]);
+            pool[j] = pool[^1];
+            pool.RemoveAt(pool.Count - 1);
+        }
     }
 
     /// <summary>Offers just this square, so a copy of the game can show what it would do (see <see cref="MovePreview"/>).</summary>
@@ -259,6 +349,13 @@ public sealed class Game
         Act(p, events);
         Phase = GamePhase.Trading;
 
+        // Modern: play one square, then draw one.
+        if (IsModern)
+        {
+            _hands[CurrentPlayerIndex].Remove(p);
+            FillHand(CurrentPlayerIndex);
+        }
+
         // Once no company can be founded, the game ends after this round and one more.
         if (_finalRound is null && !Board.CanStillFoundCompany())
         {
@@ -270,7 +367,7 @@ public sealed class Game
 
     /// <summary>Shareholders affected by changes in the current world.</summary>
     private IEnumerable<int> Recipients =>
-        Type == GameType.Classic ? Enumerable.Range(0, _players.Length) : [CurrentPlayerIndex];
+        SharedBoard ? Enumerable.Range(0, _players.Length) : [CurrentPlayerIndex];
 
     private void Act(Pos p, List<GameEvent> events)
     {
@@ -306,6 +403,7 @@ public sealed class Game
                 board.Replace(Board.CellForCompany(absorbed), Board.CellForCompany(survivor));
                 Companies[absorbed].Exists = false;
                 Companies[absorbed].Value = 0;
+                Companies[absorbed].Supply = 0;
 
                 // Check for a further merger, then the square itself expands the survivor.
                 Act(p, events);
@@ -342,10 +440,15 @@ public sealed class Game
         company.Value = Claim(p, company.Index);
 
         foreach (int i in Recipients) _players[i].Shares[company.Index] = 0;
-        CurrentPlayer.Shares[company.Index] = FreeShares;
-        CurrentPlayer.Money += company.Value;
 
-        events.Add(new CompanyFoundedEvent(CurrentPlayerIndex, company.Index, company.Value, FreeShares, company.Value));
+        // Modern: fewer free shares, no cash, and a fixed number of shares to go round.
+        long freeShares = IsModern ? ModernRules.FreeShares : FreeShares;
+        long bonus = IsModern ? 0 : company.Value;
+        company.Supply = IsModern ? ModernRules.SharesPerCompany : 0;
+        CurrentPlayer.Shares[company.Index] = freeShares;
+        CurrentPlayer.Money += bonus;
+
+        events.Add(new CompanyFoundedEvent(CurrentPlayerIndex, company.Index, company.Value, freeShares, bonus));
         CheckSplit(company.Index, events);
     }
 
@@ -355,8 +458,9 @@ public sealed class Game
         long added = Claim(p, companyIndex);
         company.Value += added;
 
+        // Modern: growth raises the share price only. There is no cash dividend.
         var dividends = new List<Payout>();
-        foreach (int i in Recipients)
+        foreach (int i in IsModern ? [] : Recipients)
         {
             BigInteger amount = _players[i].Shares[companyIndex] * added;
             _players[i].Money += amount;
@@ -374,18 +478,52 @@ public sealed class Game
         long absorbedValue = b.Value;
         a.Value += b.Value;
 
+        // Modern: shares in the company taken over are bought out for cash (no free shares in the survivor),
+        // and its two largest holders get a bonus.
+        var bonuses = IsModern
+            ? MajorityBonuses(Recipients.Select(i => (i, _players[i].Shares[absorbed])), absorbedValue)
+            : [];
+
         var rows = new List<MergerRow>();
         foreach (int i in Recipients)
         {
             var pl = _players[i];
             BigInteger profit = pl.Shares[absorbed] * absorbedValue;
-            rows.Add(new MergerRow(i, pl.Shares[survivor], pl.Shares[absorbed], profit));
-            pl.Money += profit;
-            pl.Shares[survivor] += pl.Shares[absorbed];
+            BigInteger bonus = bonuses.GetValueOrDefault(i);
+            rows.Add(new MergerRow(i, pl.Shares[survivor], pl.Shares[absorbed], profit, bonus));
+            pl.Money += profit + bonus;
+            if (!IsModern) pl.Shares[survivor] += pl.Shares[absorbed];
             pl.Shares[absorbed] = 0;
         }
 
         events.Add(new MergerEvent(CurrentPlayerIndex, survivor, absorbed, absorbedValue, a.Value, rows));
+    }
+
+    /// <summary>
+    /// Modern merger bonuses: the largest holder gets <see cref="ModernRules.LargestHolderBonus"/> times the share price
+    /// and the second-largest <see cref="ModernRules.SecondHolderBonus"/> times. Players tied for largest share both
+    /// bonuses evenly; players tied for second share the second bonus. A sole holder gets both.
+    /// </summary>
+    internal static Dictionary<int, BigInteger> MajorityBonuses(IEnumerable<(int Player, BigInteger Shares)> holdings, long price)
+    {
+        var result = new Dictionary<int, BigInteger>();
+        var holders = holdings.Where(h => h.Shares > 0).OrderByDescending(h => h.Shares).ToList();
+        if (holders.Count == 0) return result;
+
+        BigInteger first = ModernRules.LargestHolderBonus * price, second = ModernRules.SecondHolderBonus * price;
+        var top = holders.Where(h => h.Shares == holders[0].Shares).ToList();
+        var rest = holders.Skip(top.Count).ToList();
+
+        if (top.Count > 1 || rest.Count == 0)
+        {
+            foreach (var h in top) result[h.Player] = (first + second) / top.Count;
+            return result;
+        }
+
+        result[top[0].Player] = first;
+        var runnersUp = rest.Where(h => h.Shares == rest[0].Shares).ToList();
+        foreach (var h in runnersUp) result[h.Player] = second / runnersUp.Count;
+        return result;
     }
 
     private void CheckSplit(int companyIndex, List<GameEvent> events)
@@ -395,6 +533,7 @@ public sealed class Game
         {
             long old = company.Value;
             company.Value /= 2;
+            company.Supply *= 2;   // Modern: every holder's shares double, and so does the supply
             var rows = new List<SplitRow>();
             foreach (int i in Recipients)
             {
@@ -410,11 +549,31 @@ public sealed class Game
 
     public bool CanTrade => Phase == GamePhase.Trading;
 
-    /// <summary>How many shares the current player can afford.</summary>
+    /// <summary>
+    /// How many shares the current player can buy: what they can afford, and in Modern no more than
+    /// the shares left in the company and their buying allowance for this turn.
+    /// </summary>
     public BigInteger MaxBuy(int company)
     {
         var c = Companies[company];
-        return c.Exists && c.Value > 0 ? CurrentPlayer.Money / c.Value : 0;
+        if (!c.Exists || c.Value <= 0) return 0;
+        var afford = CurrentPlayer.Money / c.Value;
+        if (!IsModern) return afford;
+        return BigInteger.Max(0, BigInteger.Min(afford, BigInteger.Min(BuyAllowanceLeft, SharesLeft(company))));
+    }
+
+    /// <summary>Modern: shares the current player may still buy this turn, across all companies.</summary>
+    public BigInteger BuyAllowanceLeft => IsModern ? BigInteger.Max(0, ModernRules.BuyLimitPerTurn - _boughtThisTurn) : BigInteger.MinusOne;
+
+    /// <summary>Modern: shares in a company that no player holds yet. -1 when there's no limit.</summary>
+    public BigInteger SharesLeft(int company)
+    {
+        var c = Companies[company];
+        if (!IsModern || c.Supply == 0) return BigInteger.MinusOne;
+        BigInteger held = 0;
+        for (int i = 0; i < _players.Length; i++)
+            if (WorldFor(i) == CurrentWorld) held += _players[i].Shares[company];
+        return BigInteger.Max(0, c.Supply - held);
     }
 
     /// <summary>Validates a trade for the current player. Returns an error message or null.</summary>
@@ -423,6 +582,10 @@ public sealed class Game
         if (!CanTrade) return "You can only trade after choosing a square.";
         if (company < 0 || company >= Companies.Length || !Companies[company].Exists) return "That company doesn't exist.";
         if (quantity < 1) return "Enter a number of shares.";
+        if (isBuy && IsModern && quantity > MaxBuy(company) && CurrentPlayer.Money / Companies[company].Value >= quantity)
+            return BuyAllowanceLeft < quantity
+                ? $"You can buy only {ModernRules.BuyLimitPerTurn} shares a turn ({BuyAllowanceLeft} left this turn)."
+                : $"There are only {SharesLeft(company)} {Companies[company].Name} shares left.";
         if (isBuy && quantity > MaxBuy(company)) return "You can't buy that many shares, you fraudster.";
         if (!isBuy && quantity > CurrentPlayer.Shares[company]) return "You can't sell that many shares, you fraudster.";
         return null;
@@ -434,6 +597,7 @@ public sealed class Game
         long price = Companies[company].Value;
         CurrentPlayer.Shares[company] += quantity;
         CurrentPlayer.Money -= quantity * price;
+        _boughtThisTurn += quantity;
         return new TradeEvent(CurrentPlayerIndex, company, quantity, price, IsBuy: true);
     }
 

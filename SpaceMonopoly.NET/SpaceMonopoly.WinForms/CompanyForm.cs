@@ -39,7 +39,7 @@ internal sealed class CompanyForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoScaleDimensions = new SizeF(96f, 96f);
         Font = new Font("Segoe UI", 9f);
-        ClientSize = new Size(470, 350);
+        ClientSize = new Size(470, 370);
 
         _header.Controls.Add(_title);
 
@@ -57,7 +57,7 @@ internal sealed class CompanyForm : Form
         _canBuy.Dock = DockStyle.Top;
         _canBuy.TextAlign = ContentAlignment.MiddleCenter;
         _canBuy.AutoSize = false;
-        _canBuy.Height = 24;
+        _canBuy.Height = 44;   // two lines in a Modern game
 
         _buy = Ui.Button("Buy >>>", (_, _) => Trade(isBuy: true, new BigInteger(_buyQty.Value)));
         _maxBuy = Ui.Button("Max Buy", (_, _) => Trade(isBuy: true, _game.MaxBuy(_company)));
@@ -144,6 +144,9 @@ internal sealed class CompanyForm : Form
         var max = _game.MaxBuy(company);
         _owned.Text = $"{me.Name} owns {Currency.Number(owned)} share{(owned == 1 ? "" : "s")} in this company.";
         _canBuy.Text = $"{me.Name} has {_currency.Format(me.Money)} and can buy {(max > 1 ? "up to " : "")}{Currency.Number(max)} share{(max == 1 ? "" : "s")}.";
+        if (_game.IsModern)
+            _canBuy.Text += Environment.NewLine + $"Buying left this turn: {_game.BuyAllowanceLeft} of {ModernRules.BuyLimitPerTurn}. " +
+                            $"Shares left in the company: {Currency.Number(_game.SharesLeft(company))}.";
 
         _buyQty.Value = 0;
         _sellQty.Value = 0;

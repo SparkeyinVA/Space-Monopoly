@@ -130,7 +130,15 @@ public sealed class ClaudeCodeAi : IAiPlayer
                       $"up to {game.Companies.Length} companies). Money is in Galactic Bucks (₲).");
         if (game.NoMoreCompanies)
             sb.AppendLine($"No more companies can be formed, so the game ends after round {game.Rounds}.");
-        if (game.Type == GameType.Classic)
+        if (game.IsModern)
+        {
+            sb.AppendLine($"Modern game: everyone shares this board. The squares on offer are your private hand of {ModernRules.HandSize}; you draw a new one after playing.");
+            sb.AppendLine($"Rules: growth raises the share price only (no cash dividends). You may buy at most {ModernRules.BuyLimitPerTurn} shares per turn " +
+                          $"(you have {game.BuyAllowanceLeft} left); selling is unlimited. Each company has {ModernRules.SharesPerCompany} shares in total (doubled by each split). " +
+                          $"Founding gives {ModernRules.FreeShares} free shares and no cash. In a merger, shares in the company taken over are paid out in cash at its price, " +
+                          $"and its largest holder gets a bonus of {ModernRules.LargestHolderBonus}x its share price, the second-largest {ModernRules.SecondHolderBonus}x.");
+        }
+        else if (game.Type == GameType.Classic)
             sb.AppendLine("Classic game: everyone plays on this one board and shares its companies.");
         else
             sb.AppendLine("Tournament game: this board and its companies are yours alone; opponents have their own copies.");

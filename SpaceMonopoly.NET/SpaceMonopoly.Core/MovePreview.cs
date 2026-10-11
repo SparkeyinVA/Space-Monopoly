@@ -99,9 +99,15 @@ public sealed record MovePreview(
             case MoveKind.Merge:
                 lines.Add($"Merger: {Co(Company)} takes over {Co(Absorbed)}. {Co(Company)} shares become {currency.Format(PriceAfter)}" +
                           (Splits ? " after a split." : "."));
+                var bonuses = Events.OfType<MergerEvent>().SelectMany(m => m.Rows).Where(r => r.Bonus > 0)
+                    .Where(r => !game.Rules.HideDetails || r.Player == game.CurrentPlayerIndex)
+                    .Select(r => $"{(r.Player == game.CurrentPlayerIndex ? "you" : game.Players[r.Player].Name)} {currency.Format(r.Bonus)}")
+                    .ToList();
+                if (bonuses.Count > 0) lines.Add("Majority bonus: " + string.Join(" · ", bonuses) + ".");
                 break;
             case MoveKind.Found:
-                lines.Add($"Found {Co(Company)} at {currency.Format(PriceRise)} a share. You get {Game.FreeShares} free shares" +
+                long free = Events.OfType<CompanyFoundedEvent>().First().FreeShares;
+                lines.Add($"Found {Co(Company)} at {currency.Format(PriceRise)} a share. You get {free} free shares" +
                           (FounderCash > 0 ? $" and {currency.Format(FounderCash)}." : ".") + (Splits ? $" It splits straight away to {currency.Format(PriceAfter)}." : ""));
                 break;
             default:

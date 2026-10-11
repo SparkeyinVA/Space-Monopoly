@@ -18,6 +18,9 @@ public sealed record AppSettings
     public GameRules Rules { get; init; } = new();
     public GridSize GridSize { get; init; } = GridSize.Small;
 
+    /// <summary>The game type picked last in New Game. New players start with Modern.</summary>
+    public GameType LastGameType { get; init; } = GameType.Modern;
+
     /// <summary>Pause between a computer player's actions so you can follow along.</summary>
     public int ComputerDelayMs { get; init; } = 800;
 
@@ -39,14 +42,18 @@ public sealed class HighScoreTable
 
     public Dictionary<GridSize, List<HighScoreEntry>> Tables { get; set; } = new();
 
-    public IReadOnlyList<HighScoreEntry> For(GridSize size) =>
-        Tables.TryGetValue(size, out var list) ? list : [];
+    /// <summary>Modern games score far lower than Classic ones, so they have tables of their own.</summary>
+    public Dictionary<GridSize, List<HighScoreEntry>> ModernTables { get; set; } = new();
 
-    /// <summary>Adds a score if it makes the table. Returns its 0-based position, or -1.</summary>
+    public IReadOnlyList<HighScoreEntry> For(GridSize size, bool modern = false) =>
+        (modern ? ModernTables : Tables).TryGetValue(size, out var list) ? list : [];
+
+    /// <summary>Adds a score if it makes the table (Modern games go in the Modern tables). Returns its 0-based position, or -1.</summary>
     public int Add(GridSize size, HighScoreEntry entry)
     {
-        if (!Tables.TryGetValue(size, out var list))
-            Tables[size] = list = [];
+        var tables = entry.GameType == GameType.Modern ? ModernTables : Tables;
+        if (!tables.TryGetValue(size, out var list))
+            tables[size] = list = [];
         int index = list.FindIndex(e => entry.Wealth > e.Wealth);
         if (index < 0) index = list.Count;
         if (index >= MaxEntries) return -1;

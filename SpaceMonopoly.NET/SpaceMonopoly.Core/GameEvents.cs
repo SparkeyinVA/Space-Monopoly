@@ -13,7 +13,12 @@ public sealed record Payout(int Player, BigInteger Amount);
 /// <summary>A company grew by one square. Every shareholder receives a dividend of shares x value added.</summary>
 public sealed record CompanyExpandedEvent(int Player, int Company, long ValueAdded, long NewValue, IReadOnlyList<Payout> Dividends) : GameEvent;
 
-public sealed record MergerRow(int Player, BigInteger SurvivorShares, BigInteger AbsorbedShares, BigInteger Profit);
+/// <param name="Profit">Cash for the shares in the company taken over.</param>
+/// <param name="Bonus">Modern only: the majority bonus for being one of its two largest holders.</param>
+public sealed record MergerRow(int Player, BigInteger SurvivorShares, BigInteger AbsorbedShares, BigInteger Profit, BigInteger Bonus = default)
+{
+    public BigInteger Total => Profit + Bonus;
+}
 
 /// <summary>Two companies merged; holders of the absorbed company are paid out and get matching shares in the survivor.</summary>
 public sealed record MergerEvent(int Player, int Survivor, int Absorbed, long AbsorbedValue, long NewValue, IReadOnlyList<MergerRow> Rows) : GameEvent;

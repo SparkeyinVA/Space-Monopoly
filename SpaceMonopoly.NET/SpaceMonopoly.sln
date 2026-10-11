@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceMonopoly.Core", "Space
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceMonopoly.Tests", "SpaceMonopoly.Tests\SpaceMonopoly.Tests.csproj", "{E3807525-E817-40AF-AE03-98B60509BA5C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceMonopoly.Balance", "SpaceMonopoly.Balance\SpaceMonopoly.Balance.csproj", "{4BF440CD-E927-4CD4-BE00-999F30A1E4D0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -55,6 +57,18 @@ Global
 		{E3807525-E817-40AF-AE03-98B60509BA5C}.Release|x64.Build.0 = Release|Any CPU
 		{E3807525-E817-40AF-AE03-98B60509BA5C}.Release|x86.ActiveCfg = Release|Any CPU
 		{E3807525-E817-40AF-AE03-98B60509BA5C}.Release|x86.Build.0 = Release|Any CPU
+		{4BF440CD-E927-4CD4-BE00-999F30A1E4D0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4BF440CD-E927-4CD4-BE00-999F30A1E4D0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4BF440CD-E927-4CD4-BE00-999F30A1E4D0}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{4BF440CD-E927-4CD4-BE00-999F30A1E4D0}.Debug|x64.Build.0 = Debug|Any CPU
+		{4BF440CD-E927-4CD4-BE00-999F30A1E4D0}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{4BF440CD-E927-4CD4-BE00-999F30A1E4D0}.Debug|x86.Build.0 = Debug|Any CPU
+		{4BF440CD-E927-4CD4-BE00-999F30A1E4D0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4BF440CD-E927-4CD4-BE00-999F30A1E4D0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4BF440CD-E927-4CD4-BE00-999F30A1E4D0}.Release|x64.ActiveCfg = Release|Any CPU
+		{4BF440CD-E927-4CD4-BE00-999F30A1E4D0}.Release|x64.Build.0 = Release|Any CPU
+		{4BF440CD-E927-4CD4-BE00-999F30A1E4D0}.Release|x86.ActiveCfg = Release|Any CPU
+		{4BF440CD-E927-4CD4-BE00-999F30A1E4D0}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

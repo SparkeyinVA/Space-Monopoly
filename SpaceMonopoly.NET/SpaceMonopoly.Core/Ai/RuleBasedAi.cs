@@ -31,8 +31,15 @@ public sealed class RuleBasedAi : IAiPlayer
     public Task<IReadOnlyList<TradeOrder>> PlanTradesAsync(Game game, CancellationToken cancellationToken) =>
         Task.FromResult(PlanTrades(game));
 
+    /// <summary>
+    /// Picks a square to play. In a Modern game, Medium and Hard first use their one prospect
+    /// (a new hand) if every square they hold would only place a star.
+    /// </summary>
     public Pos ChooseSquare(Game game)
     {
+        if (game.CanProspect && Level != AiLevel.Easy && MovePreview.ForChoices(game).All(m => m.Kind == MoveKind.Star))
+            game.Prospect();
+
         var legal = game.LegalChoices();
         if (legal.Count == 0) throw new InvalidOperationException("No legal squares to choose from.");
         int me = game.CurrentPlayerIndex;
@@ -96,8 +103,8 @@ public sealed class RuleBasedAi : IAiPlayer
         if (affordable.Count > 0 && _rng.NextDouble() < 0.8)
         {
             var pick = affordable[_rng.Next(affordable.Count)];
-            var max = me.Money / pick.Value;
-            orders.Add(new TradeOrder(TradeAction.Buy, pick.Index, BigInteger.Max(1, max / 2)));
+            var max = game.MaxBuy(pick.Index);
+            if (max > 0) orders.Add(new TradeOrder(TradeAction.Buy, pick.Index, BigInteger.Max(1, max / 2)));
         }
         return orders;
     }
@@ -133,13 +140,19 @@ public sealed class RuleBasedAi : IAiPlayer
             }
         }
 
+        // Modern caps how many shares can be bought in a turn and how many each company has left.
+        var allowance = game.BuyAllowanceLeft;
         foreach (int c in ranked)
         {
             long price = game.Companies[c].Value;
-            if (price > cash) continue;
+            if (price > cash || allowance == 0) continue;
             var qty = cash / price;
+            if (allowance > 0) qty = BigInteger.Min(qty, allowance);
+            if (game.SharesLeft(c) is var left && left >= 0) qty = BigInteger.Min(qty, left);
+            if (qty <= 0) continue;
             orders.Add(new TradeOrder(TradeAction.Buy, c, qty));
             cash -= qty * price;
+            if (allowance > 0) allowance -= qty;
         }
         return orders;
     }

@@ -27,9 +27,14 @@ internal static class Dialogs
 
             case MergerEvent m:
             {
-                var table = Ui.Table(("Player", 140), ($"Shares in {Co(m.Survivor)}", 140), ($"Shares in {Co(m.Absorbed)}", 140), ("Money earned", 120));
+                bool bonuses = game.IsModern;
+                var table = bonuses
+                    ? Ui.Table(("Player", 140), ($"Shares in {Co(m.Absorbed)}", 140), ("Paid for shares", 120), ("Majority bonus", 120))
+                    : Ui.Table(("Player", 140), ($"Shares in {Co(m.Survivor)}", 140), ($"Shares in {Co(m.Absorbed)}", 140), ("Money earned", 120));
                 foreach (var r in m.Rows)
-                    table.Items.Add(Ui.Row(Name(r.Player), Currency.Number(r.SurvivorShares), Currency.Number(r.AbsorbedShares), currency.Format(r.Profit)));
+                    table.Items.Add(bonuses
+                        ? Ui.Row(Name(r.Player), Currency.Number(r.AbsorbedShares), currency.Format(r.Profit), currency.Format(r.Bonus))
+                        : Ui.Row(Name(r.Player), Currency.Number(r.SurvivorShares), Currency.Number(r.AbsorbedShares), currency.Format(r.Profit)));
                 Show(owner, "Merger", Color.FromArgb(Company.Colors[m.Survivor]),
                     [
                         $"There has been a merger between {Co(m.Survivor)} and {Co(m.Absorbed)}.",

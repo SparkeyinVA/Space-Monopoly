@@ -29,9 +29,10 @@ public static class EventText
             {
                 string text = $"Merger! {Co(m.Absorbed)} was taken over by {Co(m.Survivor)}; " +
                               $"{Co(m.Survivor)} shares are now {currency.Format(m.NewValue)}.";
-                var paid = m.Rows.Where(r => r.Profit > 0).ToList();
+                var paid = m.Rows.Where(r => r.Total > 0).ToList();
                 if (paid.Count > 0)
-                    text += " Payouts: " + string.Join(", ", paid.Select(r => $"{Name(r.Player)} {currency.Format(r.Profit)}")) + ".";
+                    text += " Payouts: " + string.Join(", ", paid.Select(r => $"{Name(r.Player)} {currency.Format(r.Total)}" +
+                        (r.Bonus > 0 ? $" (including a {currency.Format(r.Bonus)} majority bonus)" : ""))) + ".";
                 return text;
             }
 

@@ -1,6 +1,38 @@
 namespace SpaceMonopoly.Core;
 
-public enum GameType { Classic, Tournament }
+/// <summary>
+/// Classic and Tournament follow the 2001 rules. Modern is a shorter game on a shared board with a hand of squares,
+/// limited share buying and majority bonuses (see <see cref="ModernRules"/>).
+/// </summary>
+public enum GameType { Classic, Tournament, Modern }
+
+/// <summary>The numbers that make a Modern game different. Agreed with the user; see CLAUDE.md, S2–S4.</summary>
+public static class ModernRules
+{
+    /// <summary>Rounds in a Modern game (fewer if they wouldn't fit on the board).</summary>
+    public const int Rounds = 25;
+
+    /// <summary>Squares each player holds.</summary>
+    public const int HandSize = 4;
+
+    /// <summary>Shares a player may buy in one turn, across all companies. Selling is unlimited.</summary>
+    public const int BuyLimitPerTurn = 100;
+
+    /// <summary>Shares in a new company, held by all players together. Each split doubles it.</summary>
+    public const int SharesPerCompany = 1000;
+
+    /// <summary>Free shares for founding a company (no cash bonus).</summary>
+    public const long FreeShares = 3;
+
+    /// <summary>At a merger the largest holder of the company taken over gets this many times its share price...</summary>
+    public const long LargestHolderBonus = 10;
+
+    /// <summary>...and the second-largest this many times.</summary>
+    public const long SecondHolderBonus = 5;
+
+    /// <summary>A Modern board has about one planet in this many squares (Classic: one in 30).</summary>
+    public const int PlanetOdds = 12;
+}
 
 public enum PlayerKind { Human, ComputerEasy, ComputerMedium, ComputerHard, Claude }
 
@@ -81,7 +113,10 @@ public sealed class Company
 
     public bool Exists { get; internal set; }
 
-    internal Company Clone() => new(Index) { Value = Value, Exists = Exists };
+    /// <summary>Modern only: how many shares exist, held by all players together. Zero means unlimited.</summary>
+    public BigInteger Supply { get; internal set; }
+
+    internal Company Clone() => new(Index) { Value = Value, Exists = Exists, Supply = Supply };
 
     public static Company[] CreateSet(int count) => Enumerable.Range(0, count).Select(i => new Company(i)).ToArray();
 }

@@ -96,10 +96,11 @@ public sealed class Board
         if (p.Y < Height - 1) yield return p with { Y = p.Y + 1 };
     }
 
-    public void Randomise(Random rng)
+    /// <summary>Fills the board with planets, about one in <paramref name="odds"/> squares.</summary>
+    public void Randomise(Random rng, int odds = CircleOdds)
     {
         for (int i = 0; i < _cells.Length; i++)
-            _cells[i] = rng.Next(CircleOdds) == 1 ? Circle : Empty;
+            _cells[i] = rng.Next(odds) == 1 ? Circle : Empty;   // == 1, as in the original, so old seeds give the same boards
     }
 
     /// <summary>Removes diamonds and company squares but keeps the circles.</summary>

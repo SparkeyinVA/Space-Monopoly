@@ -44,6 +44,8 @@ internal sealed class MainForm : Form
     private readonly GroupBox _companyBox = new() { Text = "Companies (click for details and trading)", Dock = DockStyle.Fill, Padding = new Padding(6) };
     private int _companySlots = -1;
     private readonly Button _endTurn;
+    private readonly Button _prospect;
+    private readonly TableLayoutPanel _turnButtons = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
     private readonly ListView _playerList = Ui.Table(("Player", 120), ("Net worth", 110));
     private readonly TextBox _log = new()
     {
@@ -102,6 +104,19 @@ internal sealed class MainForm : Form
             Margin = new Padding(4, 8, 4, 8),
         };
         _endTurn.Click += async (_, _) => await HumanEndsTurnAsync();
+        _prospect = new Button
+        {
+            Text = "Prospect",
+            Dock = DockStyle.Fill,
+            Margin = new Padding(4, 8, 4, 8),
+            Visible = false,
+        };
+        _prospect.Click += (_, _) => HumanProspects();
+        new ToolTip().SetToolTip(_prospect, "Throw away your hand and draw new squares. You can do this once per game, before you play a square.");
+        _turnButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 0));
+        _turnButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _turnButtons.Controls.Add(_prospect, 0, 0);
+        _turnButtons.Controls.Add(_endTurn, 1, 0);
 
         var side = _side;
         side.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -141,7 +156,7 @@ internal sealed class MainForm : Form
 
         side.Controls.Add(info, 0, 0);
         side.Controls.Add(_companyBox, 0, 1);
-        side.Controls.Add(_endTurn, 0, 2);
+        side.Controls.Add(_turnButtons, 0, 2);
         side.Controls.Add(playersBox, 0, 3);
         side.Controls.Add(logBox, 0, 4);
 
@@ -212,11 +227,18 @@ internal sealed class MainForm : Form
 
     // ------------------------------------------------------------------ board and menus
 
+    /// <summary>Planets per square on the current grid: Modern boards have more (about 1 in 12, against 1 in 30).</summary>
+    private int _boardPlanetOdds;
+
+    private static int PlanetOddsFor(GameType type) => type == GameType.Modern ? ModernRules.PlanetOdds : Board.CircleOdds;
+
+    /// <summary>A new random grid, with as many planets as the last game type picked in New Game uses.</summary>
     private Board NewBoard(GridSize size)
     {
         var spec = GridSpec.For(size);
         var board = new Board(spec.Width, spec.Height);
-        board.Randomise(_rng);
+        _boardPlanetOdds = PlanetOddsFor(_settings.LastGameType);
+        board.Randomise(_rng, _boardPlanetOdds);
         return board;
     }
 
@@ -245,9 +267,9 @@ internal sealed class MainForm : Form
         RefreshAll();
     }
 
-    private void ShowHighScores(IReadOnlyCollection<(GridSize, int)> fresh)
+    private void ShowHighScores(IReadOnlyCollection<(GridSize Size, bool Modern, int Index)> fresh, bool? modern = null)
     {
-        using var form = new HighScoresForm(_highScores, Currency, _settings.GridSize, fresh);
+        using var form = new HighScoresForm(_highScores, Currency, _settings.GridSize, modern ?? _settings.LastGameType == GameType.Modern, fresh);
         form.ShowDialog(this);
     }
 
@@ -256,22 +278,41 @@ internal sealed class MainForm : Form
     private async void NewGame()
     {
         if (InProgress) return;
-        using var form = new NewGameForm(_settings.Claude, _lastPlayers);
+        using var form = new NewGameForm(_settings.Claude, _lastPlayers, _settings.LastGameType);
         if (form.ShowDialog(this) != DialogResult.OK || form.Players.Count == 0) return;
         _lastPlayers = form.Players;
+        if (form.GameType != _settings.LastGameType)
+        {
+            _settings = _settings with { LastGameType = form.GameType };
+            _storage.SaveSettings(_settings);
+        }
+        _log.Clear();
+
+        // Modern boards have more planets. Switching between Modern and the 2001 rules draws a new grid.
+        if (_boardPlanetOdds != PlanetOddsFor(form.GameType))
+        {
+            _board = NewBoard(_settings.GridSize);
+            Log(form.GameType == GameType.Modern
+                ? "A new grid with more planets was drawn for the Modern game."
+                : "A new grid with the original number of planets was drawn for this game.");
+        }
 
         // The game starts from the planets on the current grid; any companies left from the last game are cleared.
         _game = new Game(Spec, _board, form.Players, form.GameType, _settings.Rules);
         _ais = _game.Players.Select(p => p.Kind.IsComputer() ? AiFactory.Create(p.Kind, _settings.Claude) : null).ToArray();
         _cts = new CancellationTokenSource();
-        _log.Clear();
 
         string who = string.Join(", ", _game.Players.Select(p => $"{p.Name} ({p.Kind.Label()})"));
         string goes = $"Each player gets {_game.GoesPerPlayer} goes";
         if (_game.GoesReduced)
-            goes += $" (fewer than the usual {Spec.GoesPerPlayer}, so that everyone's goes fit on the board)";
+            goes += $" (fewer than the usual {_game.MaxGoes}, so that everyone's goes fit on the board)";
         Log($"New {_game.Type.ToString().ToLowerInvariant()} game on the {Spec.Label.ToLowerInvariant()} grid: {who}. " +
             $"{goes}, and there can be up to {Spec.Companies} companies.");
+        if (_game.IsModern)
+            Log($"Modern rules: you hold a hand of {ModernRules.HandSize} squares (Prospect swaps it once per game). Growth raises share prices but pays " +
+                $"no dividends. Buy up to {ModernRules.BuyLimitPerTurn} shares a turn; each company has {ModernRules.SharesPerCompany:N0}. " +
+                $"In a merger the two largest holders of the company taken over get {ModernRules.LargestHolderBonus}× and " +
+                $"{ModernRules.SecondHolderBonus}× its share price as a bonus.");
 
         await ContinueAsync();
     }
@@ -295,7 +336,7 @@ internal sealed class MainForm : Form
         Log($"Game over after round {game.Turn}.");
         Dialogs.ShowGameOver(this, game, Currency);
 
-        var fresh = new List<(GridSize, int)>();
+        var fresh = new List<(GridSize Size, bool Modern, int Index)>();
         foreach (var s in game.Standings())
         {
             int index = _highScores.Add(game.Spec.Size, new HighScoreEntry(s.Name, s.NetWorth, s.Kind, game.Type, DateTime.Now));
@@ -303,13 +344,13 @@ internal sealed class MainForm : Form
             {
                 // Earlier new entries move down when a later one is inserted above them.
                 for (int i = 0; i < fresh.Count; i++)
-                    if (fresh[i].Item2 >= index) fresh[i] = (fresh[i].Item1, fresh[i].Item2 + 1);
-                fresh.Add((game.Spec.Size, index));
+                    if (fresh[i].Index >= index) fresh[i] = fresh[i] with { Index = fresh[i].Index + 1 };
+                fresh.Add((game.Spec.Size, game.IsModern, index));
             }
         }
-        fresh.RemoveAll(f => f.Item2 >= HighScoreTable.MaxEntries);
+        fresh.RemoveAll(f => f.Index >= HighScoreTable.MaxEntries);
         _storage.SaveHighScores(_highScores);
-        ShowHighScores(fresh);
+        ShowHighScores(fresh, game.IsModern);
         RefreshAll();
     }
 
@@ -385,11 +426,17 @@ internal sealed class MainForm : Form
         RefreshAll();
 
         await Task.Delay(_settings.ComputerDelayMs, token);
+        bool couldProspect = game.CanProspect;
         var square = await ai.ChooseSquareAsync(game, token);
         token.ThrowIfCancellationRequested();
+        if (couldProspect && game.HasProspected(game.CurrentPlayerIndex))
+            Log($"{player.Name} prospected: threw away their hand and drew new squares.");
 
-        // Show which square was picked before playing it.
-        _boardView.ShowBoard(game.Board, game.Choices, square, ChoiceMarks(game));
+        // Show which square was picked before playing it. A Modern hand stays private: only the chosen square shows.
+        if (game.IsModern)
+            _boardView.ShowBoard(game.Board, [square], square, ChoiceMarks(game).Where((_, i) => game.Choices[i] == square).ToList());
+        else
+            _boardView.ShowBoard(game.Board, game.Choices, square, ChoiceMarks(game));
         await Task.Delay(_settings.ComputerDelayMs, token);
 
         var events = game.PlaceSquare(square);
@@ -426,6 +473,18 @@ internal sealed class MainForm : Form
         if (events.OfType<CompanyFoundedEvent>().LastOrDefault() is { } founded && game.Companies[founded.Company].Exists)
             OpenCompany(founded.Company);
 
+        RefreshAll();
+    }
+
+    private void HumanProspects()
+    {
+        var game = _game;
+        if (game is null || _computerBusy || !game.CanProspect || !game.CurrentPlayer.IsHuman) return;
+        if (MessageBox.Show(this, "Throw away your hand and draw new squares? You can only do this once per game.",
+                "Prospect", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+            return;
+        game.Prospect();
+        Log($"{game.CurrentPlayer.Name} prospected: threw away their hand and drew new squares.");
         RefreshAll();
     }
 
@@ -559,7 +618,8 @@ internal sealed class MainForm : Form
         else
         {
             var player = game.CurrentPlayer;
-            bool choosing = inProgress && game.Phase == GamePhase.ChoosingSquare;
+            // A Modern hand is private, so another player's squares aren't shown.
+            bool choosing = inProgress && game.Phase == GamePhase.ChoosingSquare && (!game.IsModern || player.IsHuman);
             _boardView.ShowBoard(game.Board, choosing ? game.Choices : [], marks: choosing ? ChoiceMarks(game) : null);
             _goLabel.Text = inProgress
                 ? (game.NoMoreCompanies && game.Turn + 1 == game.Rounds ? "Final round" : $"Round {game.Turn + 1} of {game.Rounds}")
@@ -571,7 +631,8 @@ internal sealed class MainForm : Form
 
             if (!inProgress) SetStatus("Choose Game > New Game to play again.");
             else if (!_computerBusy && player.IsHuman && game.Phase == GamePhase.ChoosingSquare)
-                SetStatus("Choose a square (point at one for details):" + Environment.NewLine +
+                SetStatus((game.IsModern ? "Play a square from your hand" + (game.CanProspect ? ", or Prospect for a new hand" : "") : "Choose a square") +
+                          " (point at one for details):" + Environment.NewLine +
                           string.Join(Environment.NewLine, Previews(game).Select((m, i) => $"{i + 1}. {m.Summary(Currency, game.CurrentPlayerIndex)}" + (m.Allowed is null ? "" : " (not allowed)"))));
             else if (!_computerBusy && player.IsHuman)
                 SetStatus("Buy and sell shares by clicking a company, then press End Turn.");
@@ -584,12 +645,19 @@ internal sealed class MainForm : Form
             var company = game?.Companies[c];
             bool exists = company?.Exists == true;
             _companyButtons[c].TwoLines = slots > 6;
-            _companyButtons[c].SetText(exists ? company!.Name : Company.Names[c], exists ? Currency.Format(company!.Value) : "");
+            string price = exists ? Currency.Format(company!.Value) : "";
+            if (exists && game!.IsModern) price += $" · {Currency.Number(game.SharesLeft(c))} left";
+            _companyButtons[c].SetText(exists ? company!.Name : Company.Names[c], price);
             _companyButtons[c].Enabled = exists && inProgress;
             _companyDots[c].Invalidate();
         }
 
         _endTurn.Enabled = inProgress && !_computerBusy && game!.Phase == GamePhase.Trading && game.CurrentPlayer.IsHuman;
+        bool modern = game?.IsModern == true && inProgress;
+        _prospect.Visible = modern;
+        _prospect.Enabled = modern && !_computerBusy && game!.CurrentPlayer.IsHuman && game.CanProspect;
+        _turnButtons.ColumnStyles[0].Width = modern ? 35 : 0;
+        _turnButtons.ColumnStyles[1].Width = modern ? 65 : 100;
 
         _playerList.BeginUpdate();
         _playerList.Items.Clear();
