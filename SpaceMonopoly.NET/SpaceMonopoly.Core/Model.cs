@@ -33,6 +33,9 @@ public static class ModernRules
     /// <summary>Only players holding at least this many shares of the company taken over qualify for a bonus (F3).</summary>
     public const int MinSharesForBonus = 10;
 
+    /// <summary>At a merger, the survivor's share price rises by the absorbed price divided by this (Classic: 1, the whole price).</summary>
+    public const int MergerPriceDivisor = 2;
+
     /// <summary>Interest on cash, paid at the start of each player's turn (S6), rounded down.</summary>
     public const int InterestPercent = 3;
 

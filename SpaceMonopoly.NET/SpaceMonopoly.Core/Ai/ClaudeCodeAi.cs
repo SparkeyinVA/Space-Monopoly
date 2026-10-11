@@ -135,7 +135,8 @@ public sealed class ClaudeCodeAi : IAiPlayer
             sb.AppendLine($"Modern game: everyone shares this board. The squares on offer are your private hand of {ModernRules.HandSize}; you draw a new one after playing.");
             sb.AppendLine($"Rules: growth raises the share price only (no cash dividends). You may buy at most {ModernRules.BuyLimitPerTurn} shares per turn " +
                           $"(you have {game.BuyAllowanceLeft} left); selling is unlimited. Each company has {ModernRules.SharesPerCompany} shares in total and shares never split. " +
-                          $"Founding gives {ModernRules.FreeShares} free shares and no cash. In a merger, shares in the company taken over are paid out in cash at its price, " +
+                          $"Founding gives {ModernRules.FreeShares} free shares and no cash. In a merger the bigger company's price rises by half the smaller one's price; " +
+                          $"shares in the company taken over are paid out in cash at its price, " +
                           $"and its largest holder gets a bonus of {ModernRules.LargestHolderBonus}x its share price, the second-largest {ModernRules.SecondHolderBonus}x " +
                           $"(you need at least {ModernRules.MinSharesForBonus} shares to qualify). " +
                           $"Cash earns {ModernRules.InterestPercent}% interest at the start of each of your turns, so holding cash can make sense.");
@@ -143,9 +144,10 @@ public sealed class ClaudeCodeAi : IAiPlayer
                           $"{ModernRules.LargestHolderBonus}x and {ModernRules.SecondHolderBonus}x its share price, so majorities are worth fighting for.");
             if (game.GoalOf(me) is SecretGoal goal)
                 sb.AppendLine($"Your secret goal (revealed at the end): {SecretGoals.Description(goal)}");
-            if (game.CurrentEvent is EventCard now && game.NextEvent is EventCard next)
-                sb.AppendLine($"Event this round: {EventCards.Title(now)} ({EventCards.Description(now)}) " +
-                              $"Next round: {EventCards.Title(next)} ({EventCards.Description(next)}) Plan your trades for it.");
+            if (game.CurrentEvent is EventCard now)
+                sb.AppendLine($"Event this round: {EventCards.Title(now)} ({game.DescribeEvent(now)})");
+            if (game.NextEvent is EventCard next)
+                sb.AppendLine($"Event in round {game.NextEventRound}: {EventCards.Title(next)} ({game.DescribeEvent(next)}) Plan your trades for it.");
         }
         else if (game.Type == GameType.Classic)
             sb.AppendLine("Classic game: everyone plays on this one board and shares its companies.");

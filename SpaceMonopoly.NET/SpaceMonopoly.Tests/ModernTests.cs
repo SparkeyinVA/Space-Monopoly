@@ -144,11 +144,14 @@ public class ModernTests
         game.EndTurn();
 
         long bPrice = game.Companies[1].Value;
+        long aPrice = game.Companies[0].Value;
         var p0Money = game.Players[0].Money;
         var p1Money = game.Players[1].Money;
         var merger = Assert.Single(Play(game, new Pos(4, 1)).OfType<MergerEvent>());
 
         Assert.Equal(0, merger.Survivor);       // same size, so the lower-lettered company survives
+        // The survivor's price rises by half the absorbed price, plus the square itself (no planet beside it).
+        Assert.Equal(aPrice + bPrice / 2 + Game.SquareValue, game.Companies[0].Value);
         Assert.Equal(1, merger.Absorbed);
         Assert.Equal(0, game.Players[1].Shares[1]);
         Assert.Equal(3, game.Players[0].Shares[0]);
@@ -316,5 +319,55 @@ public class ModernTests
         TradeExecutor.Apply(game, new RuleBasedAi(AiLevel.Hard, 1).PlanTrades(game));
         Assert.True(game.Players[0].Shares[0] > game.Players[1].Shares[0],
             $"Hard holds {game.Players[0].Shares[0]} against {game.Players[1].Shares[0]}");
+    }
+
+    private static Game NewModernWithEvents(int players = 3) =>
+        new(Medium, new Board(Medium.Width, Medium.Height), Enumerable.Range(0, players).Select(i => ($"P{i}", PlayerKind.Human)),
+            GameType.Modern, new GameRules { Chaos = Chaos.Standard }, seed: 2);
+
+    private static void PlayRound(Game game)
+    {
+        do
+        {
+            game.PlaceSquare(game.Choices[0]);
+            game.EndTurn();
+        } while (game.CurrentPlayerIndex != 0 && game.Phase != GamePhase.Over);
+    }
+
+    [Fact]
+    public void No_events_in_the_first_two_rounds_and_round_3s_card_is_announced()
+    {
+        var game = NewModernWithEvents();
+        var announced = game.NextEvent;
+        Assert.Null(game.CurrentEvent);
+        Assert.Equal(EventCards.FirstEventRound, game.NextEventRound);
+        PlayRound(game);
+        Assert.Null(game.CurrentEvent);
+        Assert.Equal(announced, game.NextEvent);
+        PlayRound(game);
+        Assert.Equal(announced, game.CurrentEvent);
+        Assert.Equal(4, game.NextEventRound);
+    }
+
+    [Fact]
+    public void Cards_that_could_not_affect_anything_are_set_aside_before_being_announced()
+    {
+        var game = NewModernWithEvents();
+        // No companies exist, so Solar Flare and Pirate Raid can't do anything; Quiet Quarter is never set aside.
+        game.SetDeckForTesting(EventCard.SolarFlare, EventCard.PirateRaid, EventCard.QuietQuarter, EventCard.SolarFlare);
+        Assert.Equal(EventCard.QuietQuarter, game.NextEvent);
+    }
+
+    [Fact]
+    public void Galactic_grant_pays_a_tenth_of_the_average_only_to_a_player_well_behind()
+    {
+        var game = NewModernWithEvents(players: 2);
+        Assert.Null(game.GrantRecipient());          // everyone level
+        game.Players[1].Money = 1_000;
+        var (player, amount) = game.GrantRecipient()!.Value;
+        Assert.Equal(1, player);
+        var average = (game.NetWorth(0) + game.NetWorth(1)) / 2;
+        Assert.Equal(average / 10 / 100 * 100, amount);
+        Assert.Contains("about", game.DescribeEvent(EventCard.GalacticGrant));
     }
 }

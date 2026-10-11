@@ -666,10 +666,11 @@ internal sealed class MainForm : Form
                 _kindLabel.Text += Environment.NewLine + "Your secret goal: " + SecretGoals.Description(goal);
             if (inProgress && player.IsHuman && game.IsModern && game.HandOf(game.CurrentPlayerIndex).Count > ModernRules.HandSize)
                 _kindLabel.Text += Environment.NewLine + "You're in last place, so you hold an extra square.";
-            _eventLabel.Text = inProgress && game.CurrentEvent is EventCard now && game.NextEvent is EventCard next
-                ? $"This round: {EventCards.Title(now)}" + (now == EventCard.QuietQuarter ? "" : $" — {EventCards.Description(now)}") +
-                  Environment.NewLine + $"Next round: {EventCards.Title(next)}" + (next == EventCard.QuietQuarter ? "" : $" — {EventCards.Description(next)}")
-                : "";
+            string Card(EventCard card) => EventCards.Title(card) + (card == EventCard.QuietQuarter ? "" : " — " + game.DescribeEvent(card));
+            _eventLabel.Text = !inProgress || game.NextEvent is not EventCard next ? ""
+                : game.CurrentEvent is EventCard now
+                    ? $"This round: {Card(now)}" + Environment.NewLine + $"Next round: {Card(next)}"
+                    : $"Events begin in round {game.NextEventRound}. Round {game.NextEventRound}: {Card(next)}";
             _moneyLabel.Text = inProgress ? Currency.Format(player.Money) : Currency.Format(game.Standings()[0].NetWorth);
             if (inProgress && game.InterestThisTurn > 0) _moneyLabel.Text += $"  (+{Currency.Format(game.InterestThisTurn)} interest)";
 

@@ -26,8 +26,83 @@ public sealed partial class Game
     {
         _deck = EventCards.Deck(Rules.Chaos);
         Shuffle(_deck);
-        NextEvent = DrawCard();
-        StartRound();
+        // No events until round 3 (F6); round 3's card is announced from the start.
+        NextEvent = DrawUsefulCard();
+        CurrentEvent = null;
+    }
+
+    /// <summary>Lets tests choose the cards: the deck is replaced and the next card announced from it.</summary>
+    internal void SetDeckForTesting(params EventCard[] cards)
+    {
+        _deck = [.. cards];
+        _deckIndex = 0;
+        NextEvent = DrawUsefulCard();
+    }
+
+    /// <summary>The round whose card <see cref="NextEvent"/> is.</summary>
+    public int NextEventRound => Math.Max(Turn + 2, EventCards.FirstEventRound);
+
+    /// <summary>
+    /// Draws the next card to announce, setting aside any that couldn't affect anything right now (F6), so the
+    /// announced card is the one that's played. Quiet Quarter is never set aside.
+    /// </summary>
+    private EventCard DrawUsefulCard()
+    {
+        for (int tries = 0; tries < _deck.Count; tries++)
+        {
+            var card = DrawCard();
+            if (CouldAffect(card)) return card;
+        }
+        return EventCard.QuietQuarter;
+    }
+
+    /// <summary>True if the card would do something if it were played now.</summary>
+    private bool CouldAffect(EventCard card)
+    {
+        var live = Companies.Where(c => c.Exists).ToList();
+        IEnumerable<Surroundings> Empties() =>
+            Board.AllPositions().Where(p => Board[p] == Board.Empty).Select(Board.Survey);
+        return card switch
+        {
+            EventCard.QuietQuarter => true,
+            EventCard.SolarFlare => Empties().Any(s => s.Companies.Count > 0),
+            EventCard.MergerMania => Empties().Any(s => s.Companies.Count > 1),
+            EventCard.PirateRaid or EventCard.MarketBoom => live.Count > 0,
+            EventCard.AsteroidStrike => live.Any(c => Board.CompanySize(c.Index) > 1),
+            EventCard.InsiderScandal => ScandalTarget() is not null,
+            EventCard.GalacticGrant => GrantRecipient() is not null,
+            EventCard.PlanetDiscovered => Empties().Any(s => s.Companies.Count == 0),
+            EventCard.TaxAudit => true,
+            _ => true,
+        };
+    }
+
+    /// <summary>The player who would receive a Galactic Grant now and how much, or null if no one is far enough behind (F5).</summary>
+    public (int Player, BigInteger Amount)? GrantRecipient()
+    {
+        var worth = Enumerable.Range(0, _players.Length).Select(NetWorth).ToArray();
+        int poorest = Array.IndexOf(worth, worth.Min());
+        if (_players.Length < 2 || worth[poorest] * 100 >= worth.Max() * EventCards.GrantBelowLeaderPercent) return null;
+        var average = worth.Aggregate(BigInteger.Zero, (a, b) => a + b) / worth.Length;
+        var amount = average * EventCards.GrantPercent / 100 / 100 * 100;   // rounded down to 100
+        return amount > 0 ? (poorest, amount) : null;
+    }
+
+    private Company? ScandalTarget()
+    {
+        int leader = Enumerable.Range(0, _players.Length).OrderByDescending(NetWorth).First();
+        return Companies.Where(c => c.Exists && _players[leader].Shares[c.Index] > 0)
+            .OrderByDescending(c => _players[leader].Shares[c.Index] * c.Value).FirstOrDefault();
+    }
+
+    /// <summary>The card's effect in words, with the amounts it would use now (for the side panel and tooltips).</summary>
+    public string DescribeEvent(EventCard card)
+    {
+        if (card == EventCard.GalacticGrant)
+            return GrantRecipient() is var (player, amount)
+                ? $"The poorest player receives {EventCards.GrantPercent}% of the average net worth (about {Currency.Default.Format(amount)} now; {_players[player].Name} at the moment)."
+                : $"The poorest player receives {EventCards.GrantPercent}% of the average net worth, but only if they're below {EventCards.GrantBelowLeaderPercent}% of the leader (no one is now).";
+        return EventCards.Description(card);
     }
 
     private void CopyEvents(Game other)
@@ -60,11 +135,17 @@ public sealed partial class Game
         return _deck[_deckIndex++];
     }
 
-    /// <summary>Flips the next card and applies it.</summary>
+    /// <summary>Flips the announced card and applies it (from round 3), and announces the next one.</summary>
     private void StartRound()
     {
+        if (Turn + 1 < EventCards.FirstEventRound)
+        {
+            CurrentEvent = null;
+            RoundStartEvents = [];
+            return;
+        }
         CurrentEvent = NextEvent;
-        NextEvent = DrawCard();
+        NextEvent = DrawUsefulCard();
         var splits = new List<GameEvent>();
         RoundStartEvents = [ApplyEvent(CurrentEvent!.Value, splits), .. splits];
     }
@@ -124,8 +205,7 @@ public sealed partial class Game
             case EventCard.InsiderScandal:
             {
                 int leader = Enumerable.Range(0, _players.Length).OrderByDescending(NetWorth).First();
-                var target = live.Where(c => _players[leader].Shares[c.Index] > 0)
-                    .OrderByDescending(c => _players[leader].Shares[c.Index] * c.Value).FirstOrDefault();
+                var target = ScandalTarget();
                 if (target is null) break;
                 long old = Lower(target, target.Value * EventCards.ScandalPercent / 100);
                 return new(card, round, target.Index, old, target.Value, Payments: [new Payout(leader, 0)]);
@@ -133,9 +213,9 @@ public sealed partial class Game
 
             case EventCard.GalacticGrant:
             {
-                int poorest = Enumerable.Range(0, _players.Length).OrderBy(NetWorth).First();
-                _players[poorest].Money += EventCards.Grant;
-                return new(card, round, Payments: [new Payout(poorest, EventCards.Grant)]);
+                if (GrantRecipient() is not var (poorest, amount)) break;   // no one far enough behind: nothing happens
+                _players[poorest].Money += amount;
+                return new(card, round, Payments: [new Payout(poorest, amount)]);
             }
 
             case EventCard.TaxAudit:

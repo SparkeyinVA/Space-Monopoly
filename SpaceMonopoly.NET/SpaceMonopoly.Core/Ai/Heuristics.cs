@@ -45,7 +45,8 @@ internal static class Heuristics
 
             // A merger square: work out who survives, as the engine would.
             int survivor = s.Companies.OrderByDescending(c => sizes[c]).ThenBy(c => c).First();
-            double absorbedTotal = s.Companies.Where(c => c != survivor).Sum(c => (double)companies[c].Value);
+            double absorbedTotal = s.Companies.Where(c => c != survivor).Sum(c => (double)companies[c].Value)
+                                   / (game.IsModern ? ModernRules.MergerPriceDivisor : 1);
             growth[survivor] += (absorbedTotal + squareGain) * p;
             foreach (int c in s.Companies.Where(c => c != survivor))
             {

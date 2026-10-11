@@ -516,7 +516,7 @@ public sealed partial class Game
         var a = Companies[survivor];
         var b = Companies[absorbed];
         long absorbedValue = b.Value;
-        a.Value += b.Value;
+        a.Value += IsModern ? b.Value / ModernRules.MergerPriceDivisor : b.Value;   // Modern: half (Q4)
 
         // Modern: shares in the company taken over are bought out for cash (no free shares in the survivor),
         // and its two largest holders get a bonus.

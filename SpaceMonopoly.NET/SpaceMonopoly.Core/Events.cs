@@ -35,8 +35,14 @@ public static class EventCards
     /// <summary>Insider Scandal: the leader's biggest holding loses this share of its price.</summary>
     public const int ScandalPercent = 20;
 
-    /// <summary>Galactic Grant: paid to the player with the lowest net worth.</summary>
-    public const long Grant = 5000;
+    /// <summary>Galactic Grant: this share of the average net worth, paid to the poorest player (F5)...</summary>
+    public const int GrantPercent = 10;
+
+    /// <summary>...but only if their net worth is below this share of the leader's.</summary>
+    public const int GrantBelowLeaderPercent = 75;
+
+    /// <summary>No events in the first rounds (F6): the first card is flipped in this round.</summary>
+    public const int FirstEventRound = 3;
 
     /// <summary>Tax Audit: players above the average net worth pay this share of their cash.</summary>
     public const int TaxPercent = 10;
@@ -69,7 +75,7 @@ public static class EventCards
         EventCard.PlanetDiscovered => "A new planet appears on an empty square away from the companies.",
         EventCard.MergerMania => "Merger bonuses are doubled this round.",
         EventCard.InsiderScandal => $"The company the leader holds most of loses {ScandalPercent}% of its share price.",
-        EventCard.GalacticGrant => $"The player with the lowest net worth receives {Grant:N0}.",
+        EventCard.GalacticGrant => $"The poorest player receives {GrantPercent}% of the average net worth, if they're below {GrantBelowLeaderPercent}% of the leader.",
         EventCard.TaxAudit => $"Players above the average net worth pay {TaxPercent}% of their cash.",
         _ => "",
     };

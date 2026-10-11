@@ -25,15 +25,18 @@ var type = options.Classic ? GameType.Classic : GameType.Modern;
 Console.WriteLine($"Space Monopoly balance report: {type}, medium grid, {(type == GameType.Modern ? options.Chaos + " events, " : "")}" +
                   $"{options.Games} games per setup, seeds from {options.Seed}");
 Console.WriteLine();
-Console.WriteLine("== Hard, Medium, Easy (headline) ==");
+// Gap and comebacks are measured between equal players; strength with one-on-one games (see CLAUDE.md).
+Console.WriteLine("== Hard, Hard, Hard (headline: gap and comebacks) ==");
+Report.Print(Simulator.Run(type, GridSize.Medium, [AiLevel.Hard, AiLevel.Hard, AiLevel.Hard], options.Games, options.Seed, options.Chaos));
+Console.WriteLine();
+Console.WriteLine("== Strength, one-on-one ==");
+Report.PrintWinRates(Simulator.Run(type, GridSize.Medium, [AiLevel.Hard, AiLevel.Medium], options.Games, options.Seed, options.Chaos), "Hard v Medium");
+Report.PrintWinRates(Simulator.Run(type, GridSize.Medium, [AiLevel.Medium, AiLevel.Easy], options.Games, options.Seed, options.Chaos), "Medium v Easy");
+Console.WriteLine();
+Console.WriteLine("== Hard, Medium, Easy ==");
 var mixed = Simulator.Run(type, GridSize.Medium, [AiLevel.Hard, AiLevel.Medium, AiLevel.Easy], options.Games, options.Seed, options.Chaos);
 Report.Print(mixed);
 Report.PrintWinRates(mixed, "Wins by level");
-Console.WriteLine();
-Console.WriteLine("== Hard, Hard, Hard ==");
-Report.Print(Simulator.Run(type, GridSize.Medium, [AiLevel.Hard, AiLevel.Hard, AiLevel.Hard], options.Games, options.Seed, options.Chaos));
-Console.WriteLine();
-Report.PrintWinRates(Simulator.Run(type, GridSize.Medium, [AiLevel.Hard, AiLevel.Easy], options.Games, options.Seed, options.Chaos), "Hard v Easy, one-on-one");
 
 internal sealed record Options(bool Custom, bool Classic, GameType Type, GridSize Size, AiLevel[] Players, int Games, int Seed, Chaos Chaos)
 {
@@ -192,7 +195,7 @@ internal static class Report
         var levels = results[0].Levels.Distinct().ToArray();
         var wins = levels.ToDictionary(l => l, l => results.Count(r => r.Levels[r.Winner] == l));
         Row(title, string.Join(", ", levels.Select(l => $"{l} {Percent(wins[l], results.Count)}")),
-            levels.Length == 2 && levels.Contains(AiLevel.Easy) ? "Hard 80-90%" : "");
+            "");
     }
 
     private static void Row(string label, string value, string target) =>
