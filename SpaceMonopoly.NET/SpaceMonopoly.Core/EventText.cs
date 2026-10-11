@@ -39,6 +39,25 @@ public static class EventText
             case SplitEvent s:
                 return $"{Co(s.Company)} shares split two for one: {currency.Format(s.OldValue)} → {currency.Format(s.NewValue)}.";
 
+            case EventCardEvent c:
+            {
+                string text = $"Round {c.Round} event: {EventCards.Title(c.Card)}. ";
+                text += c.Card switch
+                {
+                    EventCard.PirateRaid or EventCard.InsiderScandal when c.Company >= 0 =>
+                        $"{Co(c.Company)} shares fall from {currency.Format(c.OldPrice)} to {currency.Format(c.NewPrice)}.",
+                    EventCard.AsteroidStrike when c.Company >= 0 =>
+                        $"{Co(c.Company)} loses its square at {c.Square} and its shares fall from {currency.Format(c.OldPrice)} to {currency.Format(c.NewPrice)}.",
+                    EventCard.PlanetDiscovered when c.Square is Pos at => $"A new planet appears at {at}.",
+                    EventCard.GalacticGrant when c.Payments is [var p] => $"{Name(p.Player)} receives {currency.Format(p.Amount)}.",
+                    EventCard.TaxAudit when c.Payments is { Count: > 0 } =>
+                        "Taxed: " + string.Join(", ", c.Payments.Select(p => $"{Name(p.Player)} {currency.Format(-p.Amount)}")) + ".",
+                    EventCard.QuietQuarter or EventCard.SolarFlare or EventCard.MergerMania or EventCard.MarketBoom => EventCards.Description(c.Card),
+                    _ => "It has no effect this time.",
+                };
+                return text;
+            }
+
             case NoMoreCompaniesEvent n:
                 return $"No more companies can be formed on {(game.Type == GameType.Tournament ? Name(n.Player) + "'s board" : "the board")}. " +
                        $"The game will end after round {n.LastRound}.";

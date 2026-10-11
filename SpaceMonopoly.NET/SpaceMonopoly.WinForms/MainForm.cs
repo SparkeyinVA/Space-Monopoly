@@ -28,6 +28,7 @@ internal sealed class MainForm : Form
     private readonly Label _playerLabel = Ui.Label("", 14f, FontStyle.Bold);
     private readonly Label _kindLabel = Ui.Label("");
     private readonly Label _moneyLabel = Ui.Label("", 14f, FontStyle.Bold);
+    private readonly Label _eventLabel = Ui.Label("");
     private readonly Label _status = Ui.Label("");
     private readonly CompanyButton[] _companyButtons = new CompanyButton[Company.MaxCount];
     private readonly Panel[] _companyDots = new Panel[Company.MaxCount];
@@ -132,7 +133,9 @@ internal sealed class MainForm : Form
         _goLabel.MaximumSize = _playerLabel.MaximumSize = new Size(330, 0);
         _status.MaximumSize = new Size(300, 0);
         _status.ForeColor = Color.FromArgb(40, 60, 140);
-        info.Controls.AddRange([_goLabel, _playerLabel, _kindLabel, _moneyLabel, _status]);
+        _eventLabel.ForeColor = Color.FromArgb(150, 60, 0);
+        _eventLabel.MaximumSize = new Size(330, 0);
+        info.Controls.AddRange([_goLabel, _eventLabel, _playerLabel, _kindLabel, _moneyLabel, _status]);
 
         for (int c = 0; c < Company.MaxCount; c++)
         {
@@ -278,12 +281,12 @@ internal sealed class MainForm : Form
     private async void NewGame()
     {
         if (InProgress) return;
-        using var form = new NewGameForm(_settings.Claude, _lastPlayers, _settings.LastGameType);
+        using var form = new NewGameForm(_settings.Claude, _lastPlayers, _settings.LastGameType, _settings.LastChaos);
         if (form.ShowDialog(this) != DialogResult.OK || form.Players.Count == 0) return;
         _lastPlayers = form.Players;
-        if (form.GameType != _settings.LastGameType)
+        if (form.GameType != _settings.LastGameType || form.Chaos != _settings.LastChaos)
         {
-            _settings = _settings with { LastGameType = form.GameType };
+            _settings = _settings with { LastGameType = form.GameType, LastChaos = form.Chaos };
             _storage.SaveSettings(_settings);
         }
         _log.Clear();
@@ -298,7 +301,7 @@ internal sealed class MainForm : Form
         }
 
         // The game starts from the planets on the current grid; any companies left from the last game are cleared.
-        _game = new Game(Spec, _board, form.Players, form.GameType, _settings.Rules);
+        _game = new Game(Spec, _board, form.Players, form.GameType, _settings.Rules with { Chaos = form.Chaos });
         _ais = _game.Players.Select(p => p.Kind.IsComputer() ? AiFactory.Create(p.Kind, _settings.Claude) : null).ToArray();
         _cts = new CancellationTokenSource();
 
@@ -312,7 +315,9 @@ internal sealed class MainForm : Form
             Log($"Modern rules: you hold a hand of {ModernRules.HandSize} squares (Prospect swaps it once per game). Growth raises share prices but pays " +
                 $"no dividends. Buy up to {ModernRules.BuyLimitPerTurn} shares a turn; each company has {ModernRules.SharesPerCompany:N0}. " +
                 $"In a merger the two largest holders of the company taken over get {ModernRules.LargestHolderBonus}× and " +
-                $"{ModernRules.SecondHolderBonus}× its share price as a bonus.");
+                $"{ModernRules.SecondHolderBonus}× its share price as a bonus. Cash earns {ModernRules.InterestPercent}% interest each turn. " +
+                $"Each round an event card is flipped, and the next one is shown in advance ({form.Chaos.ToString().ToLowerInvariant()} events).");
+        ReportRoundStart(_game);
 
         await ContinueAsync();
     }
@@ -386,6 +391,7 @@ internal sealed class MainForm : Form
                 await PlayComputerTurnAsync(game, ai, token);
                 if (token.IsCancellationRequested || game != _game) return;
                 game.EndTurn();
+                ReportRoundStart(game);
             }
         }
         catch (OperationCanceledException)
@@ -493,7 +499,16 @@ internal sealed class MainForm : Form
         var game = _game;
         if (game is null || _computerBusy || game.Phase != GamePhase.Trading) return;
         game.EndTurn();
+        ReportRoundStart(game);
         await ContinueAsync();
+    }
+
+    /// <summary>Logs what the round's event card did (Modern). Events never stop play with a dialog.</summary>
+    private void ReportRoundStart(Game game)
+    {
+        if (game.RoundStartEvents.Count == 0) return;
+        ReportEvents(game, game.RoundStartEvents, popups: false);
+        RefreshAll();
     }
 
     private void ReportEvents(Game game, IReadOnlyList<GameEvent> events, bool popups)
@@ -613,6 +628,7 @@ internal sealed class MainForm : Form
             _playerLabel.Text = "No game in progress";
             _kindLabel.Text = "";
             _moneyLabel.Text = "";
+            _eventLabel.Text = "";
             SetStatus("Choose Game > New Game to start.");
         }
         else
@@ -627,6 +643,10 @@ internal sealed class MainForm : Form
                 : $"Game over after round {game.Turn}";
             _playerLabel.Text = inProgress ? player.Name : $"Winner: {game.Standings()[0].Name}";
             _kindLabel.Text = inProgress ? player.Kind.Label() : "";
+            _eventLabel.Text = inProgress && game.CurrentEvent is EventCard now && game.NextEvent is EventCard next
+                ? $"This round: {EventCards.Title(now)}" + (now == EventCard.QuietQuarter ? "" : $" — {EventCards.Description(now)}") +
+                  Environment.NewLine + $"Next round: {EventCards.Title(next)}" + (next == EventCard.QuietQuarter ? "" : $" — {EventCards.Description(next)}")
+                : "";
             _moneyLabel.Text = inProgress ? Currency.Format(player.Money) : Currency.Format(game.Standings()[0].NetWorth);
             if (inProgress && game.InterestThisTurn > 0) _moneyLabel.Text += $"  (+{Currency.Format(game.InterestThisTurn)} interest)";
 

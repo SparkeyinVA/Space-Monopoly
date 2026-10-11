@@ -68,6 +68,9 @@ public sealed record GameRules
 
     /// <summary>Hides other players' holdings during play.</summary>
     public bool HideDetails { get; init; }
+
+    /// <summary>Modern only: how many event cards in the deck do nothing. Chosen in New Game.</summary>
+    public Chaos Chaos { get; init; } = Chaos.Standard;
 }
 
 public sealed class Company

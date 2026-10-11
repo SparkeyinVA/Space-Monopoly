@@ -64,6 +64,38 @@ internal static class Heuristics
         return growth;
     }
 
+    /// <summary>
+    /// Modern: how next round's announced event card is expected to change each company's share price,
+    /// as a fraction of its price (for example -0.25 for the target of a Pirate Raid).
+    /// </summary>
+    public static double[] NextEventEffect(Game game)
+    {
+        var effect = new double[game.Companies.Length];
+        var live = game.Companies.Where(c => c.Exists).ToList();
+        if (game.NextEvent is not EventCard card || live.Count == 0) return effect;
+
+        switch (card)
+        {
+            case EventCard.PirateRaid:
+                effect[live.OrderByDescending(c => c.Value).ThenBy(c => c.Index).First().Index] = -EventCards.PirateRaidPercent / 100.0;
+                break;
+            case EventCard.MarketBoom:
+                foreach (var c in live) effect[c.Index] = EventCards.MarketBoomPercent / 100.0;
+                break;
+            case EventCard.AsteroidStrike:
+                var big = live.Where(c => game.Board.CompanySize(c.Index) > 1).ToList();
+                foreach (var c in big) effect[c.Index] = -(double)EventCards.AsteroidLoss / c.Value / big.Count;
+                break;
+            case EventCard.InsiderScandal:
+                int leader = Enumerable.Range(0, game.Players.Count).OrderByDescending(game.NetWorth).First();
+                var held = live.Where(c => game.Players[leader].Shares[c.Index] > 0)
+                    .OrderByDescending(c => game.Players[leader].Shares[c.Index] * c.Value).FirstOrDefault();
+                if (held is not null) effect[held.Index] = -EventCards.ScandalPercent / 100.0;
+                break;
+        }
+        return effect;
+    }
+
     /// <summary>Modern: what a unit of cash held to the end of the game earns in interest.</summary>
     public static double InterestReturn(Game game, int player)
     {

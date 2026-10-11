@@ -42,6 +42,7 @@ internal static class HelpForms
           • Founding a company gives you 3 free shares and no cash.
           • You can buy up to 100 shares a turn, across all companies. Selling is unlimited.
           • Cash earns 3% interest at the start of each of your turns, so it can be worth holding some back.
+          • Events: at the start of each round an event card is flipped, and the next round's card is shown in advance in the side panel, so you can prepare. Pirate Raid (the most expensive company loses 25%), Asteroid Strike (a company loses its newest square and 600), Market Boom (every price +10%), Solar Flare (no company can grow this round), Planet Discovered, Merger Mania (merger bonuses doubled), Insider Scandal (the leader's biggest holding loses 20%), Galactic Grant (5,000 for the poorest player) and Tax Audit (players above the average pay 10% of their cash). The rest are Quiet Quarters. Choose Calm, Standard or Wild in New Game to set how many.
           • Each company has 1,000 shares, shared by all players. The company buttons show how many are left. A split doubles everyone's shares and the number left.
           • In a merger, shares in the company taken over are bought back at its share price; you don't get shares in the bigger company. Its largest shareholder gets a bonus of 10 times its share price, and the second-largest 5 times. Players tied for largest share both bonuses; players tied for second share the second bonus.
           • Modern scores have their own high score tables.

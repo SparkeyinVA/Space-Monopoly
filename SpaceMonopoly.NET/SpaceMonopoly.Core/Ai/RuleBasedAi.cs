@@ -118,6 +118,13 @@ public sealed class RuleBasedAi : IAiPlayer
         var orders = new List<TradeOrder>();
         var me = game.CurrentPlayer;
         var ratio = Heuristics.ReturnPerUnit(game, game.CurrentWorld);
+
+        // Hard reads next round's announced event: it avoids a Pirate Raid's target and buys ahead of a Market Boom.
+        if (sellThreshold is not null)
+        {
+            var effect = Heuristics.NextEventEffect(game);
+            for (int c = 0; c < ratio.Length; c++) ratio[c] += effect[c];
+        }
         // In Modern, cash earns interest, so only companies expected to beat it are worth buying.
         double interest = Heuristics.InterestReturn(game, game.CurrentPlayerIndex);
         var ranked = Enumerable.Range(0, game.Companies.Length)

@@ -15,7 +15,7 @@ public enum GamePhase { ChoosingSquare, Trading, Over }
 /// <item>Square selection can't hang when fewer than five legal squares are left.</item>
 /// </list>
 /// </remarks>
-public sealed class Game
+public sealed partial class Game
 {
     public const long StartingMoney = 6000;
     public const long SplitThreshold = 3200;
@@ -67,7 +67,10 @@ public sealed class Game
         _hands = _players.Select(_ => new List<Pos>()).ToArray();
         _prospected = new bool[_players.Length];
         if (IsModern)
+        {
             for (int i = 0; i < _players.Length; i++) FillHand(i);
+            InitEvents();
+        }
 
         BeginTurn();
     }
@@ -84,6 +87,7 @@ public sealed class Game
         _prospected = (bool[])other._prospected.Clone();
         _boughtThisTurn = other._boughtThisTurn;
         InterestThisTurn = other.InterestThisTurn;
+        CopyEvents(other);
         _rng = other._rng.Fork();
         CurrentPlayerIndex = other.CurrentPlayerIndex;
         Turn = other.Turn;
@@ -212,6 +216,7 @@ public sealed class Game
 
         CurrentPlayerIndex = (CurrentPlayerIndex + 1) % _players.Length;
         if (CurrentPlayerIndex == 0) Turn++;
+        RoundStartEvents = [];
 
         if (Turn >= Rounds)
         {
@@ -219,6 +224,8 @@ public sealed class Game
             _choices = [];
             return true;
         }
+
+        if (IsModern && CurrentPlayerIndex == 0) StartRound();
 
         BeginTurn();
         return Phase == GamePhase.Over;
@@ -380,6 +387,13 @@ public sealed class Game
         var board = Board;
         var around = board.Survey(p);
 
+        if (SolarFlare && around.Companies.Count > 0)
+        {
+            board[p] = Board.Diamond;
+            events.Add(new DiamondPlacedEvent(CurrentPlayerIndex, p));
+            return;
+        }
+
         switch (around.Companies.Count)
         {
             case 0:
@@ -423,6 +437,7 @@ public sealed class Game
         var board = Board;
         int cell = Board.CellForCompany(company);
         board[p] = cell;
+        RecordClaim(p);
         long value = SquareValue;
         foreach (var n in board.Neighbours(p))
         {
@@ -434,6 +449,7 @@ public sealed class Game
             {
                 value += DiamondBonus;
                 board[n] = cell;
+                RecordClaim(n);
             }
         }
         return value;
@@ -487,7 +503,7 @@ public sealed class Game
         // Modern: shares in the company taken over are bought out for cash (no free shares in the survivor),
         // and its two largest holders get a bonus.
         var bonuses = IsModern
-            ? MajorityBonuses(Recipients.Select(i => (i, _players[i].Shares[absorbed])), absorbedValue)
+            ? MajorityBonuses(Recipients.Select(i => (i, _players[i].Shares[absorbed])), absorbedValue * (MergerMania ? 2 : 1))
             : [];
 
         var rows = new List<MergerRow>();

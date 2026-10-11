@@ -17,10 +17,11 @@ internal sealed class NewGameForm : Form
     private readonly RadioButton _modern = new() { Text = "Modern — 25 rounds, a hand of squares, majority bonuses (about 15–30 minutes)", AutoSize = true };
     private readonly RadioButton _classic = new() { Text = "Classic — the 2001 rules: everyone shares one board", AutoSize = true };
     private readonly RadioButton _tournament = new() { Text = "Tournament — everyone gets their own copy of the same board", AutoSize = true };
+    private readonly ComboBox _chaos = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 330 };
     private readonly Button _add, _remove, _up, _down, _go;
     private readonly ClaudeCodeSettings _claudeSettings;
 
-    public NewGameForm(ClaudeCodeSettings claudeSettings, IReadOnlyList<(string Name, PlayerKind Kind)> previous, GameType lastType)
+    public NewGameForm(ClaudeCodeSettings claudeSettings, IReadOnlyList<(string Name, PlayerKind Kind)> previous, GameType lastType, Chaos lastChaos)
     {
         _claudeSettings = claudeSettings;
         SuspendLayout();
@@ -32,7 +33,7 @@ internal sealed class NewGameForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoScaleDimensions = new SizeF(96f, 96f);
         Font = new Font("Segoe UI", 9f);
-        ClientSize = new Size(620, 500);
+        ClientSize = new Size(620, 530);
 
         foreach (var k in Kinds) _kind.Items.Add(k.Label());
         _kind.SelectedIndex = 0;
@@ -63,10 +64,18 @@ internal sealed class NewGameForm : Form
         var listHolder = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8, 4, 0, 4) };
         listHolder.Controls.Add(_players);
 
-        var typeBox = new GroupBox { Text = "Game type", Dock = DockStyle.Bottom, Height = 104, Padding = new Padding(10, 6, 10, 6) };
+        var typeBox = new GroupBox { Text = "Game type", Dock = DockStyle.Bottom, Height = 136, Padding = new Padding(10, 6, 10, 6) };
         var typeFlow = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown };
-        typeFlow.Controls.AddRange([_modern, _classic, _tournament]);
+        _chaos.Items.AddRange(["Calm — events are rare", "Standard — an event most rounds", "Wild — something happens almost every round"]);
+        _chaos.SelectedIndex = (int)lastChaos;
+        var chaosRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(18, 0, 0, 0) };
+        var chaosLabel = Ui.Label("Modern events:");
+        chaosLabel.Anchor = _chaos.Anchor = AnchorStyles.Left;
+        chaosRow.Controls.AddRange([chaosLabel, _chaos]);
+        typeFlow.Controls.AddRange([_modern, chaosRow, _classic, _tournament]);
+        _modern.CheckedChanged += (_, _) => _chaos.Enabled = _modern.Checked;
         (lastType switch { GameType.Classic => _classic, GameType.Tournament => _tournament, _ => _modern }).Checked = true;
+        _chaos.Enabled = _modern.Checked;
         typeBox.Controls.Add(typeFlow);
 
         Controls.Add(listHolder);
@@ -88,6 +97,8 @@ internal sealed class NewGameForm : Form
     }
 
     public List<(string Name, PlayerKind Kind)> Players { get; } = [];
+
+    public Chaos Chaos => (Chaos)Math.Max(0, _chaos.SelectedIndex);
 
     public GameType GameType => _tournament.Checked ? GameType.Tournament : _classic.Checked ? GameType.Classic : GameType.Modern;
 

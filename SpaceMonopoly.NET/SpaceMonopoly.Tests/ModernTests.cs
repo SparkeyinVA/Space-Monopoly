@@ -11,7 +11,9 @@ public class ModernTests
     {
         var board = new Board(Medium.Width, Medium.Height);
         foreach (var c in circles) board[c] = Board.Circle;
-        return new Game(Medium, board, Enumerable.Range(0, players).Select(i => ($"P{i}", PlayerKind.Human)), GameType.Modern, new GameRules(), seed);
+        // No events, so the cards can't change the boards these tests set up.
+        return new Game(Medium, board, Enumerable.Range(0, players).Select(i => ($"P{i}", PlayerKind.Human)), GameType.Modern,
+            new GameRules { Chaos = Chaos.None }, seed);
     }
 
     private static IReadOnlyList<GameEvent> Play(Game game, Pos p)

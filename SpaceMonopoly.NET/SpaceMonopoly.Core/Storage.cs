@@ -21,6 +21,9 @@ public sealed record AppSettings
     /// <summary>The game type picked last in New Game. New players start with Modern.</summary>
     public GameType LastGameType { get; init; } = GameType.Modern;
 
+    /// <summary>The chaos level picked last for a Modern game.</summary>
+    public Chaos LastChaos { get; init; } = Chaos.Standard;
+
     /// <summary>Pause between a computer player's actions so you can follow along.</summary>
     public int ComputerDelayMs { get; init; } = 800;
 

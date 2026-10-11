@@ -138,6 +138,9 @@ public sealed class ClaudeCodeAi : IAiPlayer
                           $"Founding gives {ModernRules.FreeShares} free shares and no cash. In a merger, shares in the company taken over are paid out in cash at its price, " +
                           $"and its largest holder gets a bonus of {ModernRules.LargestHolderBonus}x its share price, the second-largest {ModernRules.SecondHolderBonus}x. " +
                           $"Cash earns {ModernRules.InterestPercent}% interest at the start of each of your turns, so holding cash can make sense.");
+            if (game.CurrentEvent is EventCard now && game.NextEvent is EventCard next)
+                sb.AppendLine($"Event this round: {EventCards.Title(now)} ({EventCards.Description(now)}) " +
+                              $"Next round: {EventCards.Title(next)} ({EventCards.Description(next)}) Plan your trades for it.");
         }
         else if (game.Type == GameType.Classic)
             sb.AppendLine("Classic game: everyone plays on this one board and shares its companies.");
