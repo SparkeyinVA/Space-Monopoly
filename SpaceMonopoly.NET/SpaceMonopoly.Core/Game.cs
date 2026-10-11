@@ -43,6 +43,15 @@ public sealed partial class Game
     private BigInteger _boughtThisTurn;
     private bool _swappedThisTurn;
 
+    // S18: the round from which each square in a hand counts, so it can expire after ModernRules.SquareExpiryTurns turns.
+    private Dictionary<Pos, int> _heldFrom = [];
+
+    /// <summary>S18: squares that expired from the hand of the player whose turn just ended (only that player may see them).</summary>
+    public IReadOnlyList<Pos> ExpiredSquares { get; private set; } = [];
+
+    /// <summary>S18: the player whose squares are in <see cref="ExpiredSquares"/>.</summary>
+    public int ExpiredFor { get; private set; } = -1;
+
     public Game(GridSpec spec, Board startingBoard, IEnumerable<(string Name, PlayerKind Kind)> players,
         GameType type, GameRules rules, int? seed = null)
     {
@@ -90,6 +99,9 @@ public sealed partial class Game
         _prospected = (bool[])other._prospected.Clone();
         _boughtThisTurn = other._boughtThisTurn;
         _swappedThisTurn = other._swappedThisTurn;
+        _heldFrom = new Dictionary<Pos, int>(other._heldFrom);
+        ExpiredSquares = other.ExpiredSquares;
+        ExpiredFor = other.ExpiredFor;
         InterestThisTurn = other.InterestThisTurn;
         CopyEvents(other);
         CopyComebacks(other);
@@ -224,6 +236,7 @@ public sealed partial class Game
         if (Phase == GamePhase.Over) return true;
         if (Phase != GamePhase.Trading) throw new InvalidOperationException("Choose a square before ending the turn.");
         SettleConversions(new Dictionary<int, BigInteger>());   // offers nobody answered are taken as cash
+        ExpireSquares();
 
         CurrentPlayerIndex = (CurrentPlayerIndex + 1) % _players.Length;
         if (CurrentPlayerIndex == 0)
@@ -298,6 +311,35 @@ public sealed partial class Game
         _choices = [.. hand];
     }
 
+    /// <summary>S18: how many of the player's turns a square in their hand has left, counting this one if it's their turn.</summary>
+    public int TurnsLeft(int player, Pos square)
+    {
+        if (!IsModern || !_heldFrom.TryGetValue(square, out int from)) return int.MaxValue;
+        return ModernRules.SquareExpiryTurns - (Turn - from);
+    }
+
+    /// <summary>
+    /// S18: at the end of a player's turn, squares they have held for <see cref="ModernRules.SquareExpiryTurns"/> of their turns
+    /// without playing are thrown away (back into the draw) and replaced.
+    /// </summary>
+    private void ExpireSquares()
+    {
+        ExpiredSquares = [];
+        ExpiredFor = -1;
+        if (!IsModern) return;
+        int me = CurrentPlayerIndex;
+        var expired = _hands[me].Where(p => TurnsLeft(me, p) <= 1).ToList();
+        if (expired.Count == 0) return;
+        foreach (var p in expired)
+        {
+            _hands[me].Remove(p);
+            _heldFrom.Remove(p);
+        }
+        FillHand(me, exclude: expired);
+        ExpiredSquares = expired;
+        ExpiredFor = me;
+    }
+
     /// <summary>Throws away squares that can no longer be played, tops the hand up and returns it.</summary>
     private List<Pos> RefreshHand(int player)
     {
@@ -332,6 +374,8 @@ public sealed partial class Game
             var pick = from[_rng.Next(from.Count)];
             hand.Add(pick);
             pool.Remove(pick);
+            // S18: a square drawn after playing (or at the end of a turn) starts counting from the player's next turn.
+            _heldFrom[pick] = Phase == GamePhase.Trading ? Turn + 1 : Turn;
         }
     }
 

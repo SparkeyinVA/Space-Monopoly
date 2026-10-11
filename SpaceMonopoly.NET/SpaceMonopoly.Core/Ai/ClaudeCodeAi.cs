@@ -64,6 +64,7 @@ public sealed class ClaudeCodeAi : IAiPlayer
             sb.AppendLine("- From round 3 an event card is played at the start of each round; the next round's card is always announced in advance.");
             sb.AppendLine("- Each player has a secret goal worth a cash reward at the end.");
             sb.AppendLine("- Once per turn, before playing, you may swap one square in your hand for a new one. Once per game you may prospect: replace your whole hand.");
+            sb.AppendLine($"- A square you hold for {ModernRules.SquareExpiryTurns} of your turns without playing it expires at the end of the last one and is replaced.");
         }
         else
         {
@@ -332,7 +333,8 @@ public sealed class ClaudeCodeAi : IAiPlayer
         for (int i = 0; i < game.Choices.Count; i++)
         {
             var square = game.Choices[i];
-            sb.Append($"  {i + 1}. Square {square}: ");
+            sb.Append($"  {i + 1}. Square {square}" + (game.IsModern && game.TurnsLeft(me, square) is int left and < 100
+                ? (left <= 1 ? " (last turn before it expires)" : $" ({left} turns before it expires)") : "") + ": ");
             if (game.ValidateChoice(square) is string why)
             {
                 sb.AppendLine($"NOT ALLOWED ({why})");

@@ -13,6 +13,7 @@ public enum EventCard
     InsiderScandal,
     GalacticGrant,
     TaxAudit,
+    DividendDay,
 }
 
 /// <summary>
@@ -47,6 +48,9 @@ public static class EventCards
     /// <summary>Tax Audit: players above the average net worth pay this share of their cash.</summary>
     public const int TaxPercent = 10;
 
+    /// <summary>Dividend Day (S17): paid to every player for each company they hold at least one share in.</summary>
+    public const long DividendPerCompany = 2000;
+
     /// <summary>No event can push a share price below this.</summary>
     public const long MinimumPrice = 100;
 
@@ -62,6 +66,7 @@ public static class EventCards
         EventCard.InsiderScandal => "Insider Scandal",
         EventCard.GalacticGrant => "Galactic Grant",
         EventCard.TaxAudit => "Tax Audit",
+        EventCard.DividendDay => "Dividend Day",
         _ => card.ToString(),
     };
 
@@ -77,16 +82,21 @@ public static class EventCards
         EventCard.InsiderScandal => $"The company the leader holds most of loses {ScandalPercent}% of its share price.",
         EventCard.GalacticGrant => $"The poorest player receives {GrantPercent}% of the average net worth, if they're below {GrantBelowLeaderPercent}% of the leader.",
         EventCard.TaxAudit => $"Players above the average net worth pay {TaxPercent}% of their cash.",
+        EventCard.DividendDay => $"Every player is paid {DividendPerCompany:N0} for each company they hold at least one share in.",
         _ => "",
     };
 
-    /// <summary>The deck for a chaos level: 14 event cards plus 12, 6 or 2 Quiet Quarters.</summary>
+    /// <summary>
+    /// The deck for a chaos level: 16 event cards (including 2 Dividend Days, S17) plus 12, 4 or 2 Quiet Quarters.
+    /// In Standard the Dividend Days replace 2 Quiet Quarters, so the deck stays at 20 cards.
+    /// </summary>
     public static List<EventCard> Deck(Chaos chaos)
     {
         if (chaos == Chaos.None) return [EventCard.QuietQuarter];
         var deck = new List<EventCard>();
         void Add(EventCard card, int copies) => deck.AddRange(Enumerable.Repeat(card, copies));
-        Add(EventCard.QuietQuarter, chaos switch { Chaos.Calm => 12, Chaos.Wild => 2, _ => 6 });
+        Add(EventCard.QuietQuarter, chaos switch { Chaos.Calm => 12, Chaos.Wild => 2, _ => 4 });
+        Add(EventCard.DividendDay, 2);
         Add(EventCard.PirateRaid, 2);
         Add(EventCard.AsteroidStrike, 2);
         Add(EventCard.MarketBoom, 2);

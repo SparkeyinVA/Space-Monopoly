@@ -99,8 +99,12 @@ public static class RulesText
             Line($"  • Cash earns {ModernRules.InterestPercent}% interest at the start of each of your turns, so it can be worth holding some back.");
             Line("  • Events: from round 3, an event card is flipped at the start of each round, and the next round's card is always shown in advance " +
                  "in the side panel. Pirate Raid, Asteroid Strike, Market Boom, Solar Flare (no company can grow this round), Planet Discovered, " +
-                 "Merger Mania, Insider Scandal, Galactic Grant and Tax Audit; the rest are Quiet Quarters. Choose Calm, Standard or Wild in New Game.");
+                 "Merger Mania, Insider Scandal, Galactic Grant, Tax Audit and Dividend Day; the rest are Quiet Quarters. Choose Calm, Standard or Wild in New Game.");
+            Line($"  • Dividend Day pays every player {EventCards.DividendPerCompany:N0} for each company they hold at least one share in (not per share), " +
+                 "so holding a share in several companies before it pays off, and helps most when you're behind.");
             Line($"  • While you're alone in last place you hold {ModernRules.HandSize + 1} squares, and the extra one helps a company you hold or founds one.");
+            Line($"  • A square you hold for {ModernRules.SquareExpiryTurns} of your turns without playing it expires at the end of the last one and is replaced. " +
+                 "The hand list shows the turns left on each square.");
             Line("  • Each player is dealt a secret goal (yours is shown in the side panel), revealed at the end with its reward.");
             Line();
         }

@@ -665,7 +665,7 @@ internal sealed class MainForm : Form
     private void ShowHand(Game? game, bool inProgress)
     {
         bool show = game is not null && inProgress && game.IsModern && !_computerBusy && game.CurrentPlayer.IsHuman && game.Phase == GamePhase.ChoosingSquare;
-        string key = show ? $"{game!.CurrentPlayerIndex}|{string.Join(";", game.Choices)}|{game.CanSwap}|{game.CanProspect}" : "";
+        string key = show ? $"{game!.CurrentPlayerIndex}|{game.Turn}|{string.Join(";", game.Choices)}|{game.CanSwap}|{game.CanProspect}" : "";
         if (key == _handKey) return;
         _handKey = key;
 
@@ -691,7 +691,10 @@ internal sealed class MainForm : Form
         {
             var square = game.Choices[i];
             var preview = previews[i];
-            var text = Ui.Label($"{i + 1}. {preview.Summary(Currency, game.CurrentPlayerIndex)}" + (preview.Allowed is null ? "" : " (not allowed)"));
+            int left = game.TurnsLeft(game.CurrentPlayerIndex, square);
+            var text = Ui.Label($"{i + 1}. {preview.Summary(Currency, game.CurrentPlayerIndex)}" + (preview.Allowed is null ? "" : " (not allowed)") +
+                                (left <= 1 ? " · last turn" : left < 100 ? $" · {left} turns left" : ""));
+            if (left <= 1) text.ForeColor = Color.FromArgb(190, 80, 0);
             text.MaximumSize = new Size(LogicalToDeviceUnits(230), 0);
             text.Anchor = AnchorStyles.Left;
             var play = new Button { Text = "Play", AutoSize = true, Margin = new Padding(2), Enabled = preview.Allowed is null };
@@ -773,6 +776,10 @@ internal sealed class MainForm : Form
     /// <summary>Logs what the round's event card did (Modern). Events never stop play with a dialog.</summary>
     private void ReportRoundStart(Game game)
     {
+        // S18: tell a human about their own squares that expired (other players' hands stay private).
+        if (game.ExpiredFor >= 0 && game.Players[game.ExpiredFor].IsHuman)
+            foreach (var square in game.ExpiredSquares)
+                Log($"{game.Players[game.ExpiredFor].Name}: square {square} expired after {ModernRules.SquareExpiryTurns} turns in your hand and was replaced.");
         if (game.RoundStartEvents.Count == 0) return;
         ReportEvents(game, game.RoundStartEvents, popups: false);
         RefreshAll();

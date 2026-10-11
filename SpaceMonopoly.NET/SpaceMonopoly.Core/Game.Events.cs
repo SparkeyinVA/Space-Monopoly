@@ -73,6 +73,7 @@ public sealed partial class Game
             EventCard.GalacticGrant => GrantRecipient() is not null,
             EventCard.PlanetDiscovered => Empties().Any(s => s.Companies.Count == 0),
             EventCard.TaxAudit => true,
+            EventCard.DividendDay => _players.Any(p => live.Any(c => p.Shares[c.Index] > 0)),
             _ => true,
         };
     }
@@ -216,6 +217,21 @@ public sealed partial class Game
                 if (GrantRecipient() is not var (poorest, amount)) break;   // no one far enough behind: nothing happens
                 _players[poorest].Money += amount;
                 return new(card, round, Payments: [new Payout(poorest, amount)]);
+            }
+
+            case EventCard.DividendDay:
+            {
+                // S17: per company held, not per share, so players who are behind gain the most and the leader can't scale it up.
+                var paid = new List<Payout>();
+                for (int i = 0; i < _players.Length; i++)
+                {
+                    int held = live.Count(c => _players[i].Shares[c.Index] > 0);
+                    if (held == 0) continue;
+                    BigInteger amount = EventCards.DividendPerCompany * held;
+                    _players[i].Money += amount;
+                    paid.Add(new Payout(i, amount));
+                }
+                return new(card, round, Payments: paid);
             }
 
             case EventCard.TaxAudit:

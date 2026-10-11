@@ -81,6 +81,8 @@ public static class EventText
                     EventCard.PlanetDiscovered when c.Square is Pos at => $"A new planet appears at {at}.",
                     EventCard.GalacticGrant when c.Payments is [var p] => $"{Name(p.Player)} receives {currency.Format(p.Amount)}.",
                     EventCard.GalacticGrant => "No one is far enough behind, so nothing happens.",
+                    EventCard.DividendDay when c.Payments is { Count: > 0 } =>
+                        "Paid: " + string.Join(", ", c.Payments.Select(p => $"{Name(p.Player)} {currency.Format(p.Amount)}")) + ".",
                     EventCard.TaxAudit when c.Payments is { Count: > 0 } =>
                         "Taxed: " + string.Join(", ", c.Payments.Select(p => $"{Name(p.Player)} {currency.Format(-p.Amount)}")) + ".",
                     EventCard.QuietQuarter or EventCard.SolarFlare or EventCard.MergerMania or EventCard.MarketBoom => EventCards.Description(c.Card),

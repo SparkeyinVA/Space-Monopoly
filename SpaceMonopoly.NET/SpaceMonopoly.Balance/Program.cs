@@ -14,6 +14,8 @@ using SpaceMonopoly.Core.Ai;
 // --chaos Calm|Standard|Wild|None (Modern events, default Standard)   --games N (default 200)   --seed N (first seed, default 1)
 
 var options = Options.Parse(args);
+// --expiry N: turns a square can be held before it expires (S18), for trying other values.
+if (args.SkipWhile(a => a != "--expiry").Skip(1).FirstOrDefault() is string expiry) ModernRules.SquareExpiryTurns = int.Parse(expiry, CultureInfo.InvariantCulture);
 Simulator.Specials = !args.Contains("--specials") || !args.SkipWhile(a => a != "--specials").Skip(1).FirstOrDefault()?.Equals("no", StringComparison.OrdinalIgnoreCase) == true;
 if (options.Personalities)
 {
@@ -80,6 +82,9 @@ internal sealed record GameResult(
     int LastPlaceTurns,
     int LastPlaceNothingForYou,
     double FinalPayoutShare,
+    double DividendToLast,
+    double DividendToLeader,
+    int DividendDays,
     int ConversionOffers,
     int Conversions,
     double ConvertedMoney,
@@ -116,7 +121,8 @@ internal static class Simulator
         var game = new Game(spec, board, seats.Select((l, i) => ($"{l} {i + 1}", ToKind(l))), type, new GameRules { Chaos = chaos }, seed);
         var ais = seats.Select((l, i) => new RuleBasedAi(l, seed * 31 + i)).ToArray();
 
-        int offers = 0, conversions = 0;
+        int offers = 0, conversions = 0, dividendDays = 0;
+        double dividendLast = 0, dividendLeader = 0;
         double offeredMoney = 0, convertedMoney = 0;
         int turns = 0, dead = 0, nothingForYou = 0, lastTurns = 0, lastNothing = 0, mergers = 0, unpaid = 0, leadChanges = 0, leader = -1, lastAtHalfway = -1;
         double cashShare = 0;
@@ -170,6 +176,17 @@ internal static class Simulator
 
             bool roundEnds = game.CurrentPlayerIndex == game.Players.Count - 1;
             game.EndTurn();
+            foreach (var card in game.RoundStartEvents.OfType<EventCardEvent>().Where(e => e.Card == EventCard.DividendDay))
+            {
+                // Ranks before the payout.
+                var paid = (card.Payments ?? []).ToDictionary(p => p.Player, p => p.Amount);
+                var before = Enumerable.Range(0, game.Players.Count).Select(i => game.NetWorth(i) - paid.GetValueOrDefault(i)).ToArray();
+                int lastP = Enumerable.Range(0, before.Length).OrderBy(i => before[i]).First();
+                int leadP = Enumerable.Range(0, before.Length).OrderByDescending(i => before[i]).First();
+                dividendLast += (double)paid.GetValueOrDefault(lastP) / Math.Max(1, (double)before[lastP]);
+                dividendLeader += (double)paid.GetValueOrDefault(leadP) / Math.Max(1, (double)before[leadP]);
+                dividendDays++;
+            }
             if (!roundEnds) continue;
 
             int now = Leader(game);
@@ -184,7 +201,7 @@ internal static class Simulator
             .Aggregate(BigInteger.Zero, (sum, p) => sum + p.Amount);
         double payoutShare = final[winner] > 0 ? (double)winnerPayout / (double)final[winner] : 0;
         return new GameResult(seats, final, winner, lastAtHalfway, turns, dead, nothingForYou, lastTurns, lastNothing, payoutShare,
-            offers, conversions, convertedMoney, offeredMoney, mergers, unpaid, cashShare, cashCount, leadChanges,
+            dividendLast, dividendLeader, dividendDays, offers, conversions, convertedMoney, offeredMoney, mergers, unpaid, cashShare, cashCount, leadChanges,
             game.NoMoreCompanies && game.Turn < game.GoesPerPlayer);
     }
 
@@ -225,6 +242,9 @@ internal static class Report
         Row("  ...for a player alone in last place", Percent(results.Sum(r => r.LastPlaceNothingForYou), results.Sum(r => r.LastPlaceTurns)), "clearly lower");
         if (results.Any(r => r.FinalPayoutShare > 0))
             Row("Final payouts as a share of the winner's score", Percent(results.Sum(r => r.FinalPayoutShare), results.Count), "under about 25%");
+        if (results.Sum(r => r.DividendDays) > 0)
+            Row("Dividend Day as a share of net worth: last; leader", Percent(results.Sum(r => r.DividendToLast), results.Sum(r => r.DividendDays)) + "; " +
+                Percent(results.Sum(r => r.DividendToLeader), results.Sum(r => r.DividendDays)), "last gains more");
         if (results.Sum(r => r.ConversionOffers) > 0)
             Row("Conversion offers taken; money converted", Percent(results.Sum(r => r.Conversions), results.Sum(r => r.ConversionOffers)) + "; " +
                 Percent(results.Sum(r => r.ConvertedMoney), results.Sum(r => r.OfferedMoney)), "");

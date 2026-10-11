@@ -86,6 +86,10 @@ public sealed class RuleBasedAi : IAiPlayer
             // A personality's taste for mergers or founding, scaled to the player's wealth.
             if (Level != AiLevel.Easy) score += PersonalityBias(game, square, me);
 
+            // S18: play a useful square before it expires rather than lose it.
+            if (Level != AiLevel.Easy && game.TurnsLeft(me, square) <= 1 && sim.NetWorth(me) > game.NetWorth(me))
+                score += 0.005 * (double)game.NetWorth(me);
+
             // Small random tie-breaker so equal squares aren't always picked in the same order.
             score += _rng.NextDouble() * 0.01;
 
@@ -233,6 +237,19 @@ public sealed class RuleBasedAi : IAiPlayer
             double share = _profile.CashKeep * Math.Max(0, game.Rounds - game.Turn - 1) / Math.Max(1, game.Rounds);
             var keep = new BigInteger((double)game.NetWorth(self) * share);
             cash = BigInteger.Max(0, cash - keep);
+        }
+
+        // S17: before a Dividend Day, buy one share in each company not held yet (the share keeps its value).
+        if (game.IsModern && game.NextEvent == EventCard.DividendDay && game.NextEventRound == game.Turn + 2)
+        {
+            foreach (var c in game.Companies.Where(c => c.Exists && held[c.Index] == 0).OrderBy(c => c.Value))
+            {
+                if (allowance == 0 || c.Value > cash || game.SharesLeft(c.Index) == 0) continue;
+                orders.Add(new TradeOrder(TradeAction.Buy, c.Index, 1));
+                held[c.Index] = 1;
+                cash -= c.Value;
+                if (allowance > 0) allowance -= 1;
+            }
         }
 
         // Modern: first buy into majorities (F4), where a stake earns a bonus worth more than buying for growth.
