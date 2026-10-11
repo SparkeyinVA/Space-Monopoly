@@ -93,7 +93,7 @@ internal sealed class MainForm : Form
         _preferences = new ToolStripMenuItem("&Preferences...", null, (_, _) => ShowPreferences());
         var options = new ToolStripMenuItem("&Options", null, _newGrid, _gridSize, new ToolStripSeparator(), _preferences);
 
-        var howTo = new ToolStripMenuItem("&How to Play", null, (_, _) => HelpForms.ShowHowToPlay(this), Keys.F1);
+        var howTo = new ToolStripMenuItem("&How to Play", null, (_, _) => HelpForms.ShowHowToPlay(this, _game?.Type ?? _settings.LastGameType, Currency), Keys.F1);
         var about = new ToolStripMenuItem("&About Space Monopoly", null, (_, _) => HelpForms.ShowAbout(this));
         var help = new ToolStripMenuItem("&Help", null, howTo, about);
         menu.Items.AddRange([project, options, help]);
@@ -456,6 +456,7 @@ internal sealed class MainForm : Form
         var events = game.PlaceSquare(square);
         if (!string.IsNullOrWhiteSpace(ai.LastComment)) Log($"{player.Name}: \"{ai.LastComment}\"");
         ReportEvents(game, events, popups: _settings.ShowComputerPopups);
+        SettleConversions(game, events);
         RefreshAll();
 
         var orders = await ai.PlanTradesAsync(game, token);
@@ -482,6 +483,7 @@ internal sealed class MainForm : Form
         var events = game.PlaceSquare(square);
         RefreshAll();
         ReportEvents(game, events, popups: true);
+        SettleConversions(game, events);
 
         // Like the original, open the new company's details so its founder can buy shares straight away.
         if (events.OfType<CompanyFoundedEvent>().LastOrDefault() is { } founded && game.Companies[founded.Company].Exists)
@@ -526,6 +528,31 @@ internal sealed class MainForm : Form
         await ContinueAsync();
     }
 
+    /// <summary>
+    /// Modern (S15): after a merger, each holder of the company taken over chooses how much of their payout to turn into
+    /// survivor shares. Humans get a dialog (whoever played the square); computer and Claude players decide for themselves.
+    /// </summary>
+    private void SettleConversions(Game game, IReadOnlyList<GameEvent> events)
+    {
+        if (game.PendingConversions.Count == 0) return;
+        var requested = new Dictionary<int, BigInteger>();
+        foreach (var offer in game.PendingConversions)
+        {
+            if (_ais[offer.Player] is IAiPlayer ai)
+            {
+                requested[offer.Player] = ai.ChooseConversion(game, offer);
+                continue;
+            }
+            string? summary = events.OfType<MergerEvent>()
+                .Select(m => EventText.MergerSummaryFor(game, m, events, offer.Player, Currency)).LastOrDefault(t => t is not null);
+            using var form = new ConversionForm(game, offer, Currency, summary);
+            requested[offer.Player] = form.ShowDialog(this) == DialogResult.OK ? form.Shares : 0;
+        }
+        if (game.SettleConversions(requested) is { Converted.Count: > 0 } done)
+            Log(EventText.Describe(game, done, Currency));
+        RefreshAll();
+    }
+
     /// <summary>Logs what the round's event card did (Modern). Events never stop play with a dialog.</summary>
     private void ReportRoundStart(Game game)
     {
@@ -539,6 +566,11 @@ internal sealed class MainForm : Form
         foreach (var e in events)
         {
             Log(EventText.Describe(game, e, Currency));
+            // F10: each human affected by a merger gets a summary in their own terms.
+            if (e is MergerEvent merger)
+                for (int p = 0; p < game.Players.Count; p++)
+                    if (game.Players[p].IsHuman && EventText.MergerSummaryFor(game, merger, events, p, Currency) is string summary)
+                        Log($"{game.Players[p].Name}: {summary}");
             // The end-of-game warning matters to everyone, so it pops up even for computer players.
             if ((popups && e is CompanyFoundedEvent or MergerEvent or SplitEvent) || e is NoMoreCompaniesEvent)
             {

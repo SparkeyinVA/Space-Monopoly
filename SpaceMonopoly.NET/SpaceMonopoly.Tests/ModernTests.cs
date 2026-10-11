@@ -444,4 +444,100 @@ public class ModernTests
         Assert.True(around.Companies.Contains(0) || (around.Companies.Count == 0 && around.NextToCircleOrDiamond),
             $"The extra square {extra} doesn't help: next to companies [{string.Join(",", around.Companies)}]");
     }
+
+    /// <summary>A merger of B into A on P0's square, with P1 holding <paramref name="p1Shares"/> of B and P2 holding <paramref name="p2Shares"/>.</summary>
+    private static (Game Game, MergerEvent Merger) MergeBIntoA(BigInteger p1Shares, BigInteger p2Shares)
+    {
+        var game = NewModern(players: 3, circles: [new Pos(2, 0), new Pos(6, 0)]);
+        Play(game, new Pos(2, 1));        // P0 founds A
+        game.EndTurn();
+        Play(game, new Pos(6, 1));        // P1 founds B
+        game.EndTurn();
+        Play(game, new Pos(3, 1));        // P2 grows A
+        game.EndTurn();
+        Play(game, new Pos(5, 1));        // P0 grows B; A and B are one square apart
+        game.EndTurn();
+        game.PlaceSquare(game.Choices[0]);
+        game.EndTurn();
+        game.PlaceSquare(game.Choices[0]);
+        game.EndTurn();
+        game.Players[1].Shares[1] = p1Shares;
+        game.Players[2].Shares[1] = p2Shares;
+        var merger = Assert.Single(Play(game, new Pos(4, 1)).OfType<MergerEvent>());
+        return (game, merger);
+    }
+
+    [Fact]
+    public void Merger_money_can_be_partly_converted_without_using_the_buy_allowance()
+    {
+        var (game, _) = MergeBIntoA(12, 0);
+        var offer = Assert.Single(game.PendingConversions);
+        Assert.Equal(1, offer.Player);
+        Assert.Equal(0, offer.Survivor);
+        long price = game.Companies[0].Value;
+        var money = game.Players[1].Money;
+        var allowance = game.BuyAllowanceLeft;
+
+        var done = game.SettleConversions(new Dictionary<int, BigInteger> { [1] = 5 });
+        Assert.Equal(5, Assert.Single(done!.Converted).Shares);
+        Assert.Equal(5, game.Players[1].Shares[0]);
+        Assert.Equal(money - 5 * price, game.Players[1].Money);
+        Assert.Equal(allowance, game.BuyAllowanceLeft);
+        Assert.Empty(game.PendingConversions);
+    }
+
+    [Fact]
+    public void A_conversion_is_limited_to_the_money_owed()
+    {
+        var (game, _) = MergeBIntoA(12, 0);
+        var offer = game.PendingConversions[0];
+        long price = game.Companies[0].Value;
+        game.SettleConversions(new Dictionary<int, BigInteger> { [1] = 1_000_000 });
+        Assert.Equal(offer.Owed / price, game.Players[1].Shares[0]);
+    }
+
+    [Fact]
+    public void When_shares_run_short_they_are_shared_out_by_money_owed()
+    {
+        var (game, _) = MergeBIntoA(30, 10);
+        var offers = game.PendingConversions.ToDictionary(o => o.Player, o => o.Owed);
+        Assert.Equal(2, offers.Count);
+        // Leave only 20 survivor shares unheld.
+        game.Players[0].Shares[0] = ModernRules.SharesPerCompany - 20;
+        game.Players[1].Money = game.Players[2].Money = 10_000_000;
+
+        game.SettleConversions(new Dictionary<int, BigInteger> { [1] = 1_000, [2] = 1_000 });
+        var p1 = game.Players[1].Shares[0];
+        var p2 = game.Players[2].Shares[0];
+        Assert.True(p1 + p2 <= 20);
+        Assert.Equal(20 * offers[1] / (offers[1] + offers[2]), p1);
+        Assert.Equal(20 * offers[2] / (offers[1] + offers[2]), p2);
+    }
+
+    [Fact]
+    public void Unanswered_offers_stay_as_cash_and_none_are_made_at_the_end()
+    {
+        var (game, _) = MergeBIntoA(12, 0);
+        var money = game.Players[1].Money;
+        game.EndTurn();                                  // P1's turn starts, so P1 is also paid interest
+        Assert.Empty(game.PendingConversions);
+        Assert.Equal(money + game.InterestThisTurn, game.Players[1].Money);
+        Assert.Equal(0, game.Players[1].Shares[0]);
+
+        game.EndNow();
+        Assert.Empty(game.PendingConversions);
+    }
+
+    [Fact]
+    public void Each_affected_player_gets_a_merger_summary_in_their_own_terms()
+    {
+        var (game, merger) = MergeBIntoA(12, 0);
+        var events = new List<GameEvent> { merger };
+        string? p1 = EventText.MergerSummaryFor(game, merger, events, 1, Currency.Default);
+        Assert.NotNull(p1);
+        Assert.Contains("Betelguese was taken over by Atlantis Ltd.", p1);
+        Assert.Contains("You were paid", p1);
+        Assert.Contains("bonus", p1);
+        Assert.Null(EventText.MergerSummaryFor(game, merger, events, 2, Currency.Default));   // P2 held neither company
+    }
 }

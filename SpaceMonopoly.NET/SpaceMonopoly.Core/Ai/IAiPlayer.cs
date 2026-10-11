@@ -14,6 +14,9 @@ public interface IAiPlayer
 
     /// <summary>Optional remark about the last move, shown in the game log.</summary>
     string? LastComment { get; }
+
+    /// <summary>Modern (S15): how many survivor shares to take for the money this player was paid at a merger.</summary>
+    BigInteger ChooseConversion(Game game, ConversionOffer offer);
 }
 
 public static class TradeExecutor

@@ -137,6 +137,7 @@ public sealed partial class Game
     {
         Phase = GamePhase.Over;
         _choices = [];
+        _offers = [];   // conversions are for mergers during the game only
         if (!IsModern || _finished) return;
         _finished = true;
 

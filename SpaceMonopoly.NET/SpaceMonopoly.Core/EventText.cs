@@ -3,6 +3,36 @@ namespace SpaceMonopoly.Core;
 /// <summary>Plain-English descriptions of game events, used by the game log and the Claude prompt.</summary>
 public static class EventText
 {
+    /// <summary>
+    /// A merger in one player's own terms (F10), or null if it didn't affect them. For example: "Cannon Inc. was taken over by
+    /// Atlantis Ltd. You were paid ₲12,000 for your 10 Cannon Inc. shares + ₲6,000 bonus. Atlantis Ltd. shares rose ₲700 to
+    /// ₲2,700; your 8 Atlantis Ltd. shares gained ₲5,600."
+    /// </summary>
+    public static string? MergerSummaryFor(Game game, MergerEvent m, IReadOnlyList<GameEvent> events, int player, Currency currency)
+    {
+        var row = m.Rows.FirstOrDefault(r => r.Player == player);
+        if (row is null || (row.AbsorbedShares == 0 && row.SurvivorShares == 0)) return null;
+        string Co(int c) => Company.Names[c];
+
+        long before = m.NewValue - (game.IsModern ? m.AbsorbedValue / ModernRules.MergerPriceDivisor : m.AbsorbedValue);
+        long after = events.OfType<CompanyExpandedEvent>().LastOrDefault(e => e.Company == m.Survivor)?.NewValue ?? m.NewValue;
+        var text = $"{Co(m.Absorbed)} was taken over by {Co(m.Survivor)}.";
+        if (row.AbsorbedShares > 0)
+        {
+            text += $" You were paid {currency.Format(row.Profit)} for your {Currency.Number(row.AbsorbedShares)} {Co(m.Absorbed)} shares";
+            if (row.Bonus > 0) text += $" + {currency.Format(row.Bonus)} bonus";
+            else if (game.IsModern && row.AbsorbedShares < ModernRules.MinSharesForBonus)
+                text += $" (no bonus: it takes {ModernRules.MinSharesForBonus} shares to qualify)";
+            text += game.IsModern ? "." : $", and they became {Co(m.Survivor)} shares.";
+        }
+        if (row.SurvivorShares > 0)
+            text += $" {Co(m.Survivor)} shares rose {currency.Format(after - before)} to {currency.Format(after)}; " +
+                    $"your {Currency.Number(row.SurvivorShares)} {Co(m.Survivor)} shares gained {currency.Format(row.SurvivorShares * (after - before))}.";
+        else
+            text += $" {Co(m.Survivor)} shares are now {currency.Format(after)}.";
+        return text;
+    }
+
     public static string Describe(Game game, GameEvent e, Currency currency)
     {
         string Name(int p) => game.Players[p].Name;
@@ -58,6 +88,10 @@ public static class EventText
                 };
                 return text;
             }
+
+            case ConversionEvent v:
+                return $"Converted merger money into {Co(v.Survivor)} shares at {currency.Format(v.Price)}: " +
+                       string.Join(", ", v.Converted.Select(c => $"{Name(c.Player)} {Currency.Number(c.Shares)}")) + ".";
 
             case FinalPayoutEvent f:
                 return $"Final payout from {Co(f.Company)} (shares at {currency.Format(f.Price)}): " +

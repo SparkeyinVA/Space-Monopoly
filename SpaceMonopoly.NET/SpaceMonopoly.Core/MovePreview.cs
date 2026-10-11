@@ -103,10 +103,17 @@ public sealed record MovePreview(
                     .Where(r => !game.Rules.HideDetails || r.Player == game.CurrentPlayerIndex)
                     .Select(r => $"{(r.Player == game.CurrentPlayerIndex ? "you" : game.Players[r.Player].Name)} {currency.Format(r.Bonus)}")
                     .ToList();
+                var paid = Events.OfType<MergerEvent>().SelectMany(m => m.Rows).Where(r => r.Profit > 0)
+                    .Where(r => !game.Rules.HideDetails || r.Player == game.CurrentPlayerIndex)
+                    .Select(r => $"{(r.Player == game.CurrentPlayerIndex ? "you" : game.Players[r.Player].Name)} {currency.Format(r.Profit)}")
+                    .ToList();
+                if (paid.Count > 0) lines.Add($"Paid for {Co(Absorbed)} shares: " + string.Join(" · ", paid) + ".");
                 if (bonuses.Count > 0) lines.Add("Majority bonus: " + string.Join(" · ", bonuses) + ".");
                 else if (game.IsModern && !Events.OfType<MergerEvent>().SelectMany(m => m.Rows).Any(r => r.Bonus > 0))
                     lines.Add($"No majority bonus: nobody holds the {ModernRules.MinSharesForBonus} shares needed to qualify.");
                 if (game.IsModern && bonuses.Count > 0) lines.Add($"(Holders of at least {ModernRules.MinSharesForBonus} shares qualify.)");
+                if (game.IsModern && paid.Count > 0)
+                    lines.Add($"Those paid may turn the money into {Co(Company)} shares at {currency.Format(PriceAfter)}.");
                 break;
             case MoveKind.Found:
                 long free = Events.OfType<CompanyFoundedEvent>().First().FreeShares;

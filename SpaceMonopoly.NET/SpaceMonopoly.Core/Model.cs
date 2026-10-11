@@ -46,7 +46,7 @@ public static class ModernRules
     public const int MergerPriceDivisor = 2;
 
     /// <summary>Interest on cash, paid at the start of each player's turn (S6), rounded down.</summary>
-    public const int InterestPercent = 3;
+    public const int InterestPercent = 4;
 
     /// <summary>A Modern board has about one planet in this many squares (Classic: one in 30).</summary>
     public const int PlanetOdds = 12;

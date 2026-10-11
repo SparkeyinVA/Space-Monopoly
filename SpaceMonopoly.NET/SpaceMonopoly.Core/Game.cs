@@ -92,6 +92,7 @@ public sealed partial class Game
         InterestThisTurn = other.InterestThisTurn;
         CopyEvents(other);
         CopyComebacks(other);
+        CopyConversions(other);
         _rng = other._rng.Fork();
         CurrentPlayerIndex = other.CurrentPlayerIndex;
         Turn = other.Turn;
@@ -219,6 +220,7 @@ public sealed partial class Game
     {
         if (Phase == GamePhase.Over) return true;
         if (Phase != GamePhase.Trading) throw new InvalidOperationException("Choose a square before ending the turn.");
+        SettleConversions(new Dictionary<int, BigInteger>());   // offers nobody answered are taken as cash
 
         CurrentPlayerIndex = (CurrentPlayerIndex + 1) % _players.Length;
         if (CurrentPlayerIndex == 0) Turn++;
@@ -386,6 +388,7 @@ public sealed partial class Game
 
         var events = new List<GameEvent>();
         _choices = [];
+        _offers = [];
         Act(p, events);
         Phase = GamePhase.Trading;
 
@@ -548,6 +551,8 @@ public sealed partial class Game
         }
 
         events.Add(new MergerEvent(CurrentPlayerIndex, survivor, absorbed, absorbedValue, a.Value, rows));
+        RedirectOffers(absorbed, survivor);
+        OfferConversion(survivor, rows);
     }
 
     /// <summary>

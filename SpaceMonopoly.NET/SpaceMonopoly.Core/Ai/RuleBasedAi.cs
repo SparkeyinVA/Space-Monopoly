@@ -119,6 +119,26 @@ public sealed class RuleBasedAi : IAiPlayer
         return Heuristics.RelativeOutlook(sim, me, opponentWeight);
     }
 
+    /// <summary>
+    /// Modern (S15): Easy converts a random share. The others convert everything when the survivor is expected to grow
+    /// faster than interest (Hard also allows for the announced event), or when the shares improve their majority bonus.
+    /// </summary>
+    public BigInteger ChooseConversion(Game game, ConversionOffer offer)
+    {
+        var survivor = game.Companies[offer.Survivor];
+        var most = offer.MostShares(survivor.Value);
+        if (most <= 0) return 0;
+        if (Level == AiLevel.Easy) return new BigInteger((double)most * _rng.NextDouble());
+
+        double ratio = Heuristics.ReturnPerUnit(game, game.WorldFor(offer.Player))[offer.Survivor];
+        if (Level == AiLevel.Hard) ratio += Heuristics.NextEventEffect(game)[offer.Survivor];
+        double interest = Heuristics.InterestReturn(game, offer.Player);
+        var held = game.Players[offer.Player].Shares[offer.Survivor];
+        double bonusGain = Heuristics.BonusAt(game, offer.Player, offer.Survivor, held + most) - Heuristics.BonusAt(game, offer.Player, offer.Survivor, held);
+        double cashKeep = _profile.CashKeep;   // a Hoarder prefers to keep its merger money
+        return ratio + bonusGain / ((double)most * survivor.Value) > interest + cashKeep ? most : 0;
+    }
+
     public IReadOnlyList<TradeOrder> PlanTrades(Game game)
     {
         var existing = game.Companies.Where(c => c.Exists).ToList();

@@ -79,6 +79,10 @@ internal sealed record GameResult(
     int LastPlaceTurns,
     int LastPlaceNothingForYou,
     double FinalPayoutShare,
+    int ConversionOffers,
+    int Conversions,
+    double ConvertedMoney,
+    double OfferedMoney,
     int Mergers,
     int MergersWithoutBonus,
     double CashShareSum,
@@ -106,6 +110,8 @@ internal static class Simulator
         var game = new Game(spec, board, seats.Select((l, i) => ($"{l} {i + 1}", ToKind(l))), type, new GameRules { Chaos = chaos }, seed);
         var ais = seats.Select((l, i) => new RuleBasedAi(l, seed * 31 + i)).ToArray();
 
+        int offers = 0, conversions = 0;
+        double offeredMoney = 0, convertedMoney = 0;
         int turns = 0, dead = 0, nothingForYou = 0, lastTurns = 0, lastNothing = 0, mergers = 0, unpaid = 0, leadChanges = 0, leader = -1, lastAtHalfway = -1;
         double cashShare = 0;
         int cashCount = 0;
@@ -132,6 +138,20 @@ internal static class Simulator
                 mergers++;
                 if (merger.Rows.All(r => r.Bonus == 0)) unpaid++;
             }
+
+            // S15: each holder of a company taken over decides how much to convert.
+            if (game.PendingConversions.Count > 0)
+            {
+                var requested = game.PendingConversions.ToDictionary(o => o.Player, o => ais[o.Player].ChooseConversion(game, o));
+                offers += game.PendingConversions.Count;
+                offeredMoney += game.PendingConversions.Sum(o => (double)o.Owed);
+                long price = game.Companies[game.PendingConversions[0].Survivor].Value;
+                if (game.SettleConversions(requested) is { } done)
+                {
+                    conversions += done.Converted.Count;
+                    convertedMoney += done.Converted.Sum(c => (double)c.Shares * price);
+                }
+            }
             TradeExecutor.Apply(game, ai.PlanTrades(game));
             turns++;
 
@@ -157,7 +177,8 @@ internal static class Simulator
         var winnerPayout = game.GameEndEvents.OfType<FinalPayoutEvent>().SelectMany(f => f.Payouts).Where(p => p.Player == winner)
             .Aggregate(BigInteger.Zero, (sum, p) => sum + p.Amount);
         double payoutShare = final[winner] > 0 ? (double)winnerPayout / (double)final[winner] : 0;
-        return new GameResult(seats, final, winner, lastAtHalfway, turns, dead, nothingForYou, lastTurns, lastNothing, payoutShare, mergers, unpaid, cashShare, cashCount, leadChanges,
+        return new GameResult(seats, final, winner, lastAtHalfway, turns, dead, nothingForYou, lastTurns, lastNothing, payoutShare,
+            offers, conversions, convertedMoney, offeredMoney, mergers, unpaid, cashShare, cashCount, leadChanges,
             game.NoMoreCompanies && game.Turn < game.GoesPerPlayer);
     }
 
@@ -198,6 +219,9 @@ internal static class Report
         Row("  ...for a player alone in last place", Percent(results.Sum(r => r.LastPlaceNothingForYou), results.Sum(r => r.LastPlaceTurns)), "clearly lower");
         if (results.Any(r => r.FinalPayoutShare > 0))
             Row("Final payouts as a share of the winner's score", Percent(results.Sum(r => r.FinalPayoutShare), results.Count), "under about 25%");
+        if (results.Sum(r => r.ConversionOffers) > 0)
+            Row("Conversion offers taken; money converted", Percent(results.Sum(r => r.Conversions), results.Sum(r => r.ConversionOffers)) + "; " +
+                Percent(results.Sum(r => r.ConvertedMoney), results.Sum(r => r.OfferedMoney)), "");
         Row("Mergers per game; share with no bonus paid", $"{(double)results.Sum(r => r.Mergers) / results.Count:0.0}; " +
             Percent(results.Sum(r => r.MergersWithoutBonus), results.Sum(r => r.Mergers)), "");
         if (ratios.Count > 0)
@@ -277,6 +301,8 @@ internal static class PersonalityReport
         {
             int me = game.CurrentPlayerIndex;
             var events = game.PlaceSquare(ais[me].ChooseSquare(game));
+            if (game.PendingConversions.Count > 0)
+                game.SettleConversions(game.PendingConversions.ToDictionary(o => o.Player, o => ais[o.Player].ChooseConversion(game, o)));
             mergers[me] += events.OfType<MergerEvent>().Count();
             founded[me] += events.OfType<CompanyFoundedEvent>().Count();
             TradeExecutor.Apply(game, ais[me].PlanTrades(game));

@@ -40,7 +40,8 @@ public sealed class ClaudeCodeAi : IAiPlayer
             sb.AppendLine($"  The survivor's price rises by half the absorbed company's price. Shares in the absorbed company are bought back in cash at its price " +
                           $"(you get no survivor shares). Its largest holder gets a bonus of {ModernRules.LargestHolderBonus}x its share price and the second-largest " +
                           $"{ModernRules.SecondHolderBonus}x; you need at least {ModernRules.MinSharesForBonus} shares to qualify. Players tied for largest share both bonuses; " +
-                          "players tied for second share the second bonus.");
+                          "players tied for second share the second bonus. Each player paid at a merger may turn any part of that money into survivor shares " +
+                          "at the survivor's new price; this doesn't count toward the buy limit.");
         }
         else
         {
@@ -114,12 +115,14 @@ public sealed class ClaudeCodeAi : IAiPlayer
         {
             sb.AppendLine("- \"swap\" (optional): the number of a square to throw away and replace BEFORE playing. You'll then be asked again with the new hand.");
             sb.AppendLine("- \"prospect\" (optional): true to replace your whole hand before playing (once per game). You'll then be asked again.");
+            sb.AppendLine("- \"convert\" (optional): if your square causes a merger and you're paid for shares in the company taken over, the percent " +
+                          "(0-100) of that money to turn into shares of the surviving company at its new price. Leave it out to keep the cash.");
         }
         return sb.ToString();
     }
 
     internal const string Schema = """
-        {"type":"object","properties":{"choice":{"type":"integer","minimum":1,"maximum":5},"trades":{"type":"array","items":{"type":"object","properties":{"action":{"type":"string","enum":["buy","sell"]},"company":{"type":"string","enum":["A","B","C","D","E","F","G","H","I","J","K","L"]},"quantity":{"type":"integer","minimum":0}},"required":["action","company","quantity"],"additionalProperties":false}},"comment":{"type":"string"},"plan":{"type":"string"},"swap":{"type":"integer","minimum":0,"maximum":5},"prospect":{"type":"boolean"}},"required":["choice","trades","comment","plan"],"additionalProperties":false}
+        {"type":"object","properties":{"choice":{"type":"integer","minimum":1,"maximum":5},"trades":{"type":"array","items":{"type":"object","properties":{"action":{"type":"string","enum":["buy","sell"]},"company":{"type":"string","enum":["A","B","C","D","E","F","G","H","I","J","K","L"]},"quantity":{"type":"integer","minimum":0}},"required":["action","company","quantity"],"additionalProperties":false}},"comment":{"type":"string"},"plan":{"type":"string"},"swap":{"type":"integer","minimum":0,"maximum":5},"prospect":{"type":"boolean"},"convert":{"type":"integer","minimum":0,"maximum":100}},"required":["choice","trades","comment","plan"],"additionalProperties":false}
         """;
 
     private readonly IClaudeRunner _runner;
@@ -150,6 +153,7 @@ public sealed class ClaudeCodeAi : IAiPlayer
     {
         _pendingTrades = null;
         _usedFallback = false;
+        _convertPercent = null;
         try
         {
             string system = BuildSystemPrompt(game, Personality);
@@ -164,6 +168,7 @@ public sealed class ClaudeCodeAi : IAiPlayer
 
             var (square, trades, comment) = ParseAnswer(game, answer);
             _pendingTrades = trades;
+            _convertPercent = answer.TryGetProperty("convert", out var convert) && convert.ValueKind == JsonValueKind.Number ? convert.GetInt32() : null;
             LastComment = comment;
             if (answer.TryGetProperty("plan", out var plan) && plan.GetString() is { Length: > 0 } text) LastPlan = text.Trim();
             return square;
@@ -174,6 +179,20 @@ public sealed class ClaudeCodeAi : IAiPlayer
             LastComment = $"(Claude unavailable — {ex.Message} Playing this turn with the built-in Hard strategy.)";
             return _fallback.ChooseSquare(game);
         }
+    }
+
+    // Percent of its merger money Claude asked to convert on its own move (S15), or null to use the built-in judgement.
+    private int? _convertPercent;
+
+    /// <summary>
+    /// On its own move Claude's answer can say what share to convert; otherwise (for example when another player's
+    /// square merged a company it holds) the built-in Hard judgement decides, to avoid a separate request.
+    /// </summary>
+    public BigInteger ChooseConversion(Game game, ConversionOffer offer)
+    {
+        if (offer.Player == game.CurrentPlayerIndex && _convertPercent is int percent)
+            return offer.MostShares(game.Companies[offer.Survivor].Value) * Math.Clamp(percent, 0, 100) / 100;
+        return _fallback.ChooseConversion(game, offer);
     }
 
     public Task<IReadOnlyList<TradeOrder>> PlanTradesAsync(Game game, CancellationToken cancellationToken)
