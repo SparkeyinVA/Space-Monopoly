@@ -21,6 +21,12 @@ public sealed record AppSettings
     /// <summary>The game type picked last in New Game. New players start with Modern.</summary>
     public GameType LastGameType { get; init; } = GameType.Modern;
 
+    /// <summary>Open the Market window by itself after the player chooses a square (S16).</summary>
+    public bool OpenMarketAfterSquare { get; init; }
+
+    /// <summary>The Market window's last position and size (left, top, width, height), or null for the default.</summary>
+    public int[]? MarketWindow { get; init; }
+
     /// <summary>The chaos level picked last for a Modern game.</summary>
     public Chaos LastChaos { get; init; } = Chaos.Standard;
 

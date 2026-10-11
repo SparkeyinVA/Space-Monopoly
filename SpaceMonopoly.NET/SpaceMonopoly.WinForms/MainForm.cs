@@ -49,7 +49,8 @@ internal sealed class MainForm : Form
     private int _companySlots = -1;
     private readonly Button _endTurn;
     private readonly Button _prospect;
-    private readonly TableLayoutPanel _turnButtons = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
+    private readonly Button _market;
+    private readonly TableLayoutPanel _turnButtons = new() { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Margin = Padding.Empty };
     private readonly ListView _playerList = Ui.Table(("Player", 120), ("Net worth", 110));
     private readonly TextBox _log = new()
     {
@@ -117,10 +118,15 @@ internal sealed class MainForm : Form
         };
         _prospect.Click += (_, _) => HumanProspects();
         new ToolTip().SetToolTip(_prospect, "Throw away your hand and draw new squares. You can do this once per game, before you play a square.");
+        _market = new Button { Text = "&Market", Dock = DockStyle.Fill, Margin = new Padding(4, 8, 4, 8), Enabled = false };
+        _market.Click += (_, _) => OpenMarket();
+        new ToolTip().SetToolTip(_market, "Buy and sell every company in one window (M).");
         _turnButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 0));
-        _turnButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _turnButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
+        _turnButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70));
         _turnButtons.Controls.Add(_prospect, 0, 0);
-        _turnButtons.Controls.Add(_endTurn, 1, 0);
+        _turnButtons.Controls.Add(_market, 1, 0);
+        _turnButtons.Controls.Add(_endTurn, 2, 0);
 
         var side = _side;
         side.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -487,7 +493,8 @@ internal sealed class MainForm : Form
 
         // Like the original, open the new company's details so its founder can buy shares straight away.
         if (events.OfType<CompanyFoundedEvent>().LastOrDefault() is { } founded && game.Companies[founded.Company].Exists)
-            OpenCompany(founded.Company);
+            if (!_settings.OpenMarketAfterSquare) OpenCompany(founded.Company);
+        if (_settings.OpenMarketAfterSquare && game.Phase == GamePhase.Trading) OpenMarket();
 
         RefreshAll();
     }
@@ -581,6 +588,39 @@ internal sealed class MainForm : Form
     }
 
     // ------------------------------------------------------------------ companies and players
+
+    /// <summary>The Market window (S16): every company in one place, with a single Confirm.</summary>
+    private void OpenMarket()
+    {
+        var game = _game;
+        if (game is null || _computerBusy || !game.CanTrade || !game.CurrentPlayer.IsHuman) return;
+        using var form = new MarketForm(game, Currency, _settings.OpenMarketAfterSquare, trade =>
+        {
+            Log(EventText.Describe(game, trade, Currency));
+            RefreshAll();
+        });
+        if (_settings.MarketWindow is [var x, var y, var w, var h] && w > 200 && h > 150 &&
+            Screen.AllScreens.Any(s => s.WorkingArea.IntersectsWith(new Rectangle(x, y, w, h))))
+        {
+            form.StartPosition = FormStartPosition.Manual;
+            form.Bounds = new Rectangle(x, y, w, h);
+        }
+        form.ShowDialog(this);
+        var b = form.WindowState == FormWindowState.Normal ? form.Bounds : form.RestoreBounds;
+        _settings = _settings with { OpenMarketAfterSquare = form.AutoOpen, MarketWindow = [b.X, b.Y, b.Width, b.Height] };
+        _storage.SaveSettings(_settings);
+        RefreshAll();
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (keyData == Keys.M && _market.Enabled && ActiveForm == this)
+        {
+            OpenMarket();
+            return true;
+        }
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
 
     private void OpenCompany(int company)
     {
@@ -745,8 +785,10 @@ internal sealed class MainForm : Form
         bool modern = game?.IsModern == true && inProgress;
         _prospect.Visible = modern;
         _prospect.Enabled = modern && !_computerBusy && game!.CurrentPlayer.IsHuman && game.CanProspect;
-        _turnButtons.ColumnStyles[0].Width = modern ? 35 : 0;
-        _turnButtons.ColumnStyles[1].Width = modern ? 65 : 100;
+        _market.Enabled = inProgress && !_computerBusy && game!.Phase == GamePhase.Trading && game.CurrentPlayer.IsHuman;
+        _turnButtons.ColumnStyles[0].Width = modern ? 28 : 0;
+        _turnButtons.ColumnStyles[1].Width = modern ? 28 : 30;
+        _turnButtons.ColumnStyles[2].Width = modern ? 44 : 70;
 
         _playerList.BeginUpdate();
         _playerList.Items.Clear();
