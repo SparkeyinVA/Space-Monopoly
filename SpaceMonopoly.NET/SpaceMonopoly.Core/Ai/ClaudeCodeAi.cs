@@ -139,7 +139,11 @@ public sealed class ClaudeCodeAi : IAiPlayer
     public ClaudeCodeAi(ClaudeCodeSettings settings, RuleBasedAi fallback)
         : this(new ClaudeCodeRunner(settings), fallback)
     {
+        KeyTurnsOnly = settings.KeyTurnsOnly;
     }
+
+    /// <summary>Ask Claude only when a square would merge companies or found one; Hard plays routine turns (S9).</summary>
+    public bool KeyTurnsOnly { get; init; }
 
     public ClaudeCodeAi(IClaudeRunner runner, RuleBasedAi fallback)
     {
@@ -154,6 +158,14 @@ public sealed class ClaudeCodeAi : IAiPlayer
         _pendingTrades = null;
         _usedFallback = false;
         _convertPercent = null;
+
+        // Routine turn: nothing on offer founds or merges a company, so Hard plays it without asking Claude.
+        if (KeyTurnsOnly && !MovePreview.ForChoices(game).Any(m => m.Kind is MoveKind.Merge or MoveKind.Found))
+        {
+            _usedFallback = true;
+            LastComment = null;
+            return _fallback.ChooseSquare(game);
+        }
         try
         {
             string system = BuildSystemPrompt(game, Personality);

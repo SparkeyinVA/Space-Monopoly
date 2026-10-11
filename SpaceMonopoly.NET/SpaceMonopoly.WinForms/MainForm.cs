@@ -76,6 +76,7 @@ internal sealed class MainForm : Form
     private readonly Button _advisor;
     private bool _advisorEnabled;
     private int[] _advisorUses = [];
+    private int? _adaptiveStep;
     private Pos? _advisedSquare;
     private readonly TableLayoutPanel _turnButtons = new() { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 1, Margin = Padding.Empty };
     private readonly ListView _playerList = Ui.Table(("Player", 120), ("Net worth", 110));
@@ -323,14 +324,19 @@ internal sealed class MainForm : Form
     private async void NewGame()
     {
         if (InProgress) return;
-        using var form = new NewGameForm(_settings.Claude, _lastPlayers, _settings.LastGameType, _settings.LastChaos);
+        using var form = new NewGameForm(_settings.Claude, _lastPlayers, _settings.LastGameType, _settings.LastChaos,
+            _settings.AdaptiveDifficulty, _settings.AdaptiveStep);
         if (form.ShowDialog(this) != DialogResult.OK || form.Players.Count == 0) return;
         _lastPlayers = form.Players;
-        if (form.GameType != _settings.LastGameType || form.Chaos != _settings.LastChaos)
+        if (form.GameType != _settings.LastGameType || form.Chaos != _settings.LastChaos || form.Adaptive != _settings.AdaptiveDifficulty)
         {
-            _settings = _settings with { LastGameType = form.GameType, LastChaos = form.Chaos };
+            _settings = _settings with { LastGameType = form.GameType, LastChaos = form.Chaos, AdaptiveDifficulty = form.Adaptive };
             _storage.SaveSettings(_settings);
         }
+        _adaptiveStep = form.Adaptive ? _settings.AdaptiveStep : null;
+        var step = AdaptiveDifficulty.At(_settings.AdaptiveStep);
+        // Adaptive difficulty: built-in computer players play at the current step (Claude players are unchanged).
+        var setups = form.Players.Select(p => form.Adaptive && p.Kind.IsComputer() && p.Kind != PlayerKind.Claude ? p with { Kind = step.Kind } : p).ToList();
         _log.Clear();
 
         // Modern boards have more planets. Switching between Modern and the 2001 rules draws a new grid.
@@ -343,12 +349,14 @@ internal sealed class MainForm : Form
         }
 
         // The game starts from the planets on the current grid; any companies left from the last game are cleared.
-        _game = new Game(Spec, _board, form.Players.Select(p => (p.Name, p.Kind)), form.GameType, _settings.Rules with { Chaos = form.Chaos });
-        _personalities = form.Players.Select(p => p.Personality ?? Personalities.Random(_rng)).ToArray();
+        _game = new Game(Spec, _board, setups.Select(p => (p.Name, p.Kind)), form.GameType, _settings.Rules with { Chaos = form.Chaos });
+        _personalities = setups.Select(p => p.Personality ?? Personalities.Random(_rng)).ToArray();
         _advisorEnabled = form.Advisor;
         _advisorUses = new int[_game.Players.Count];
         _advisedSquare = null;
-        _ais = _game.Players.Select((p, i) => p.Kind.IsComputer() ? AiFactory.Create(p.Kind, _settings.Claude, personality: _personalities[i]) : null).ToArray();
+        _ais = _game.Players.Select((p, i) => !p.Kind.IsComputer() ? null
+            : _adaptiveStep is int s && p.Kind != PlayerKind.Claude ? AdaptiveDifficulty.CreatePlayer(s, personality: _personalities[i])
+            : AiFactory.Create(p.Kind, _settings.Claude, personality: _personalities[i])).ToArray();
         _cts = new CancellationTokenSource();
 
         string who = string.Join(", ", _game.Players.Select((p, i) =>
@@ -364,6 +372,8 @@ internal sealed class MainForm : Form
                 $"In a merger the two largest holders of the company taken over get {ModernRules.LargestHolderBonus}× and " +
                 $"{ModernRules.SecondHolderBonus}× its share price as a bonus. Cash earns {ModernRules.InterestPercent}% interest each turn. " +
                 $"Each round an event card is flipped, and the next one is shown in advance ({form.Chaos.ToString().ToLowerInvariant()} events).");
+        if (_adaptiveStep is int current)
+            Log($"Adaptive difficulty: computer players are at step {current + 1} of {AdaptiveDifficulty.Steps.Count} ({AdaptiveDifficulty.At(current).Label}).");
         ReportRoundStart(_game);
 
         await ContinueAsync();
@@ -386,6 +396,18 @@ internal sealed class MainForm : Form
         _boardView.AcceptClicks = false;
         RefreshAll();
         Log($"Game over after round {game.Turn}.");
+
+        // Adaptive difficulty: one step up after a human win, one down after a loss.
+        if (_adaptiveStep is int was && game.Players.Any(p => p.IsHuman))
+        {
+            bool humanWon = game.Standings()[0].Kind == PlayerKind.Human;
+            int next = AdaptiveDifficulty.Next(was, humanWon);
+            _settings = _settings with { AdaptiveStep = next };
+            _storage.SaveSettings(_settings);
+            Log(next == was
+                ? $"Adaptive difficulty stays at {AdaptiveDifficulty.At(next).Label}."
+                : $"Adaptive difficulty: {(humanWon ? "up" : "down")} to {AdaptiveDifficulty.At(next).Label} for the next game.");
+        }
         foreach (var e in game.GameEndEvents) Log(EventText.Describe(game, e, Currency));
         Dialogs.ShowGameOver(this, game, Currency);
 
@@ -393,7 +415,8 @@ internal sealed class MainForm : Form
         foreach (var s in game.Standings())
         {
             int index = _highScores.Add(game.Spec.Size, new HighScoreEntry(s.Name, s.NetWorth, s.Kind, game.Type, DateTime.Now,
-                s.Player < _advisorUses.Length ? _advisorUses[s.Player] : 0));
+                s.Player < _advisorUses.Length ? _advisorUses[s.Player] : 0,
+                _adaptiveStep is int played && s.Kind == PlayerKind.Human ? $"adaptive: {AdaptiveDifficulty.At(played).Label}" : null));
             if (index >= 0)
             {
                 // Earlier new entries move down when a later one is inserted above them.

@@ -24,10 +24,12 @@ internal sealed class NewGameForm : Form
     private readonly ComboBox _chaos = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 330 };
     private readonly CheckBox _advisor = new() { Text = "Advisor: let human players ask what Hard would play (counted in the high scores)", AutoSize = true };
     private bool _advisorTouched;
+    private readonly CheckBox _adaptive = new() { AutoSize = true };
     private readonly Button _add, _remove, _up, _down, _go;
     private readonly ClaudeCodeSettings _claudeSettings;
 
-    public NewGameForm(ClaudeCodeSettings claudeSettings, IReadOnlyList<PlayerSetup> previous, GameType lastType, Chaos lastChaos)
+    public NewGameForm(ClaudeCodeSettings claudeSettings, IReadOnlyList<PlayerSetup> previous, GameType lastType, Chaos lastChaos,
+        bool adaptive = false, int adaptiveStep = 0)
     {
         _claudeSettings = claudeSettings;
         SuspendLayout();
@@ -39,7 +41,7 @@ internal sealed class NewGameForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoScaleDimensions = new SizeF(96f, 96f);
         Font = new Font("Segoe UI", 9f);
-        ClientSize = new Size(700, 560);
+        ClientSize = new Size(760, 590);
 
         foreach (var k in Kinds) _kind.Items.Add(k.Label());
         _kind.SelectedIndex = 0;
@@ -75,7 +77,7 @@ internal sealed class NewGameForm : Form
         var listHolder = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8, 4, 0, 4) };
         listHolder.Controls.Add(_players);
 
-        var typeBox = new GroupBox { Text = "Game type", Dock = DockStyle.Bottom, Height = 164, Padding = new Padding(10, 6, 10, 6) };
+        var typeBox = new GroupBox { Text = "Game type", Dock = DockStyle.Bottom, Height = 190, Padding = new Padding(10, 6, 10, 6) };
         var typeFlow = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown };
         _chaos.Items.AddRange(["Calm — events are rare", "Standard — an event most rounds", "Wild — something happens almost every round"]);
         _chaos.SelectedIndex = (int)lastChaos;
@@ -83,7 +85,12 @@ internal sealed class NewGameForm : Form
         var chaosLabel = Ui.Label("Modern events:");
         chaosLabel.Anchor = _chaos.Anchor = AnchorStyles.Left;
         chaosRow.Controls.AddRange([chaosLabel, _chaos]);
-        typeFlow.Controls.AddRange([_modern, chaosRow, _classic, _tournament, _advisor]);
+        _adaptive.Text = $"Adaptive difficulty: computer players get stronger when you win and weaker when you lose " +
+                         $"(now: {AdaptiveDifficulty.At(adaptiveStep).Label})";
+        _adaptive.Checked = adaptive;
+        Ui.Tip(_adaptive, "Computer players (not Claude) play at the current step, whatever level they were added with. " +
+                          "Ladder: " + string.Join(" → ", AdaptiveDifficulty.Steps.Select(s => s.Label)) + ".");
+        typeFlow.Controls.AddRange([_modern, chaosRow, _classic, _tournament, _advisor, _adaptive]);
         _advisor.Margin = new Padding(3, 6, 3, 0);
         _advisor.Click += (_, _) => _advisorTouched = true;
         _modern.CheckedChanged += (_, _) => _chaos.Enabled = _modern.Checked;
@@ -117,6 +124,9 @@ internal sealed class NewGameForm : Form
     public List<PlayerSetup> Players { get; } = [];
 
     public Chaos Chaos => (Chaos)Math.Max(0, _chaos.SelectedIndex);
+
+    /// <summary>Whether adaptive difficulty is on (S9).</summary>
+    public bool Adaptive => _adaptive.Checked;
 
     /// <summary>Whether human players may use the Advisor this game (S14).</summary>
     public bool Advisor => _advisor.Checked;

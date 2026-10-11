@@ -32,7 +32,8 @@ internal sealed class HighScoresForm : Form
             for (int i = 0; i < entries.Count; i++)
             {
                 var e = entries[i];
-                var row = Ui.Row((i + 1).ToString(), e.Name, currency.Format(e.Wealth), e.Kind.Label(), e.GameType.ToString(), e.Date.ToShortDateString(),
+                var row = Ui.Row((i + 1).ToString(), e.Name, currency.Format(e.Wealth), e.Kind.Label() + (e.Difficulty is null ? "" : $" ({e.Difficulty})"),
+                    e.GameType.ToString(), e.Date.ToShortDateString(),
                     e.Kind == PlayerKind.Human ? (e.AdvisorUses == 0 ? "—" : e.AdvisorUses.ToString()) : "");
                 if (fresh.Contains((size, modern, i)))
                 {

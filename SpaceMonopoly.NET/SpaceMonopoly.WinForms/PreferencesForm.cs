@@ -24,6 +24,7 @@ internal sealed class PreferencesForm : Form
     private readonly ComboBox _claudeModel = new() { Width = 140 };
     private readonly ComboBox _claudeEffort = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 140 };
     private readonly NumericUpDown _claudeTimeout = new() { Minimum = 30, Maximum = 900, Increment = 30, Width = 80 };
+    private readonly CheckBox _claudeKeyTurns = new() { Text = "Ask Claude only on key turns (a merger or new company is possible); Hard plays the rest", AutoSize = true };
     private readonly Label _claudeStatus = Ui.Label("");
     private readonly Button _test;
 
@@ -76,6 +77,7 @@ internal sealed class PreferencesForm : Form
             Row(Ui.Label("claude.exe location:"), _claudePath, browse),
             Row(Ui.Label("Model:"), _claudeModel, Ui.Label("Effort:"), _claudeEffort),
             Row(Ui.Label("Give up after (seconds):"), _claudeTimeout),
+            _claudeKeyTurns,
             Row(_test, _claudeStatus),
         ]);
         _claudeStatus.MaximumSize = new Size(380, 0);
@@ -148,6 +150,7 @@ internal sealed class PreferencesForm : Form
         _claudeEffort.SelectedItem = s.Claude.Effort;
         if (_claudeEffort.SelectedIndex < 0) _claudeEffort.SelectedIndex = 0;
         _claudeTimeout.Value = Math.Clamp(s.Claude.TimeoutSeconds, (int)_claudeTimeout.Minimum, (int)_claudeTimeout.Maximum);
+        _claudeKeyTurns.Checked = s.Claude.KeyTurnsOnly;
     }
 
     private ClaudeCodeSettings ReadClaude() => new()
@@ -156,6 +159,7 @@ internal sealed class PreferencesForm : Form
         Model = string.IsNullOrWhiteSpace(_claudeModel.Text) ? "sonnet" : _claudeModel.Text.Trim(),
         Effort = (string?)_claudeEffort.SelectedItem ?? "low",
         TimeoutSeconds = (int)_claudeTimeout.Value,
+        KeyTurnsOnly = _claudeKeyTurns.Checked,
     };
 
     private void Save()

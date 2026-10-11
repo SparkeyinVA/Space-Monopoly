@@ -27,6 +27,12 @@ public sealed record AppSettings
     /// <summary>The Market window's last position and size (left, top, width, height), or null for the default.</summary>
     public int[]? MarketWindow { get; init; }
 
+    /// <summary>Adaptive difficulty (S9): computer players move along a ladder with the human's results.</summary>
+    public bool AdaptiveDifficulty { get; init; }
+
+    /// <summary>The current step on the adaptive ladder (see <see cref="Ai.AdaptiveDifficulty.Steps"/>).</summary>
+    public int AdaptiveStep { get; init; }
+
     /// <summary>The chaos level picked last for a Modern game.</summary>
     public Chaos LastChaos { get; init; } = Chaos.Standard;
 
@@ -46,7 +52,9 @@ public sealed record AppSettings
 }
 
 /// <param name="AdvisorUses">How many times the player asked the Advisor during the game (S14), so assisted scores are visible.</param>
-public sealed record HighScoreEntry(string Name, BigInteger Wealth, PlayerKind Kind, GameType GameType, DateTime Date, int AdvisorUses = 0);
+/// <param name="Difficulty">With adaptive difficulty, the step the computer players were on (S9).</param>
+public sealed record HighScoreEntry(string Name, BigInteger Wealth, PlayerKind Kind, GameType GameType, DateTime Date, int AdvisorUses = 0,
+    string? Difficulty = null);
 
 /// <summary>Top ten scores for each grid size (replaces the old encrypted "scores" file).</summary>
 public sealed class HighScoreTable

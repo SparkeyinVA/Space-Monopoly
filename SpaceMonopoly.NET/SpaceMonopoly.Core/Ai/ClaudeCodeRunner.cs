@@ -16,6 +16,9 @@ public sealed record ClaudeCodeSettings
     public string Effort { get; init; } = "low";
 
     public int TimeoutSeconds { get; init; } = 180;
+
+    /// <summary>Ask Claude only when a merger or a new company is possible; Hard plays the other turns (S9).</summary>
+    public bool KeyTurnsOnly { get; init; }
 }
 
 /// <summary>Sends one prompt to Claude and returns its structured JSON answer.</summary>
