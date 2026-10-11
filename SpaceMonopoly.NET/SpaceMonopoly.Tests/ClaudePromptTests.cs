@@ -125,4 +125,21 @@ public class ClaudePromptTests
         Assert.Contains("RAIDER", ClaudeCodeAi.BuildSystemPrompt(Modern(), Personality.Raider));
         Assert.DoesNotContain("PERSONALITY", ClaudeCodeAi.BuildSystemPrompt(Modern()));
     }
+
+    [Fact]
+    public void The_prompt_shows_what_Hard_would_play_and_advice_changes_nothing()
+    {
+        var game = Modern(circles: new Pos(5, 4));
+        var hand = game.HandOf(0).ToList();
+        var money = game.Players[0].Money;
+
+        var advice = Advisor.Suggest(game);
+        Assert.InRange(advice.Choice, 1, game.Choices.Count);
+        Assert.False(string.IsNullOrWhiteSpace(advice.Reason));
+        Assert.Contains($"The built-in Hard strategy would play square {advice.Choice}", ClaudeCodeAi.BuildPrompt(game));
+
+        Assert.Equal(hand, game.HandOf(0));
+        Assert.Equal(money, game.Players[0].Money);
+        Assert.True(game.CanSwap && game.CanProspect);
+    }
 }

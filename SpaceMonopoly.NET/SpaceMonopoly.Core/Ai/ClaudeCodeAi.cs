@@ -72,21 +72,27 @@ public sealed class ClaudeCodeAi : IAiPlayer
         sb.AppendLine();
 
         sb.AppendLine("STRATEGY");
+        sb.AppendLine("- Judge every move by YOUR gain compared with the leader's gain, not by whether a rival also gains. A move that gives you " +
+                      "+5,000 and an opponent +4,000 is a good move.");
+        sb.AppendLine("- Buying into a company an opponent leads is often your best move: you gain exactly as much per share as they do. " +
+                      "Put your money where the growth is.");
+        sb.AppendLine("- Hold cash only for a reason: a move you're saving for. Idle money falls behind.");
+        sb.AppendLine("- You're shown what the built-in Hard strategy would play. It is a strong player: follow it unless you have a specific " +
+                      "reason not to, and if you don't follow it, say why in your comment.");
         if (game.IsModern)
         {
             sb.AppendLine("- Holding the company that SURVIVES a merger is a big money-maker: its price jumps by half the absorbed company's price.");
             sb.AppendLine($"- Race for first or second place (at least {ModernRules.MinSharesForBonus} shares) in companies likely to be ABSORBED, and in every company " +
                           "you expect to survive to the end: both pay majority bonuses. Defend a first place you already hold.");
             sb.AppendLine("- Use your hand to plan: keep squares you'll want later, and don't play a merger square while an opponent would win the bonus.");
-            sb.AppendLine($"- Keep some cash: it earns interest, and the {ModernRules.BuyLimitPerTurn}-share limit means you can't spend everything at once anyway.");
+            sb.AppendLine($"- Cash earns {ModernRules.InterestPercent}% a turn, which is less than a growing company usually gains: keep only what you have a use for.");
             sb.AppendLine("- Prepare for next round's announced event, and play towards your secret goal.");
             sb.AppendLine("- Swap a square that does nothing for you. Prospect only when your whole hand is poor.");
         }
         else
         {
+            sb.AppendLine("- Stay fully invested in whatever is about to grow: every growth pays a dividend on top of the higher price, and cash earns nothing.");
             sb.AppendLine("- Buy the cheapest company that can grow: every square adds the same amount to the price whatever the price is, so cheap shares gain most per Galactic Buck.");
-            sb.AppendLine("- Hold whatever is about to grow, because every growth pays you a dividend on top of the higher price.");
-            sb.AppendLine("- Avoid growing or merging companies your opponents hold more of than you do.");
             sb.AppendLine("- Late in the game, sell companies that can no longer grow and move the money to ones that can.");
         }
         sb.AppendLine();
@@ -308,6 +314,11 @@ public sealed class ClaudeCodeAi : IAiPlayer
             sb.AppendLine($"     Net worth change: {(gains.Count == 0 ? "none" : string.Join(", ", gains))}. " +
                           $"Prices afterwards: {string.Join(", ", sim.Companies.Where(c => c.Exists).Select(c => $"{c.Letter} {currency.Format(c.Value)}"))}.");
         }
+        sb.AppendLine();
+        // F9: start Claude from Hard's level; its own judgement can add to it.
+        var advice = Advisor.Suggest(game, currency);
+        sb.AppendLine($"The built-in Hard strategy would play square {advice.Choice}: {advice.Reason}");
+        sb.AppendLine("Follow it unless you have a specific reason not to, and if you don't, name that reason in your comment.");
         sb.AppendLine();
         sb.AppendLine("Pick your square, any trades, and your plan for next turn.");
         return sb.ToString();

@@ -46,13 +46,16 @@ public sealed class RuleBasedAi : IAiPlayer
     /// Picks a square to play. In a Modern game, Medium and Hard first use their one prospect
     /// (a new hand) if every square they hold would only place a star.
     /// </summary>
-    public Pos ChooseSquare(Game game)
+    public Pos ChooseSquare(Game game) => ChooseSquare(game, mayChangeHand: true);
+
+    /// <summary>Picks a square; with <paramref name="mayChangeHand"/> false it won't swap or prospect (for advice).</summary>
+    public Pos ChooseSquare(Game game, bool mayChangeHand)
     {
-        if (game.CanProspect && Level != AiLevel.Easy && MovePreview.ForChoices(game).All(m => m.Kind == MoveKind.Star))
+        if (mayChangeHand && game.CanProspect && Level != AiLevel.Easy && MovePreview.ForChoices(game).All(m => m.Kind == MoveKind.Star))
             game.Prospect();
 
         // Swap the square that does least for us, if it does nothing at all.
-        if (game.CanSwap && Level != AiLevel.Easy)
+        if (mayChangeHand && game.CanSwap && Level != AiLevel.Easy)
         {
             int me0 = game.CurrentPlayerIndex;
             var worst = MovePreview.ForChoices(game).OrderBy(m => m.NetWorthChange[me0]).ThenBy(m => m.Kind == MoveKind.Star ? 0 : 1).First();
