@@ -628,6 +628,7 @@ internal sealed class MainForm : Form
             _playerLabel.Text = inProgress ? player.Name : $"Winner: {game.Standings()[0].Name}";
             _kindLabel.Text = inProgress ? player.Kind.Label() : "";
             _moneyLabel.Text = inProgress ? Currency.Format(player.Money) : Currency.Format(game.Standings()[0].NetWorth);
+            if (inProgress && game.InterestThisTurn > 0) _moneyLabel.Text += $"  (+{Currency.Format(game.InterestThisTurn)} interest)";
 
             if (!inProgress) SetStatus("Choose Game > New Game to play again.");
             else if (!_computerBusy && player.IsHuman && game.Phase == GamePhase.ChoosingSquare)

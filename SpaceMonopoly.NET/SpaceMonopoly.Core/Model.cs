@@ -30,6 +30,9 @@ public static class ModernRules
     /// <summary>...and the second-largest this many times.</summary>
     public const long SecondHolderBonus = 5;
 
+    /// <summary>Interest on cash, paid at the start of each player's turn (S6), rounded down.</summary>
+    public const int InterestPercent = 3;
+
     /// <summary>A Modern board has about one planet in this many squares (Classic: one in 30).</summary>
     public const int PlanetOdds = 12;
 }

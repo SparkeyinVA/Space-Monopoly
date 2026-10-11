@@ -83,6 +83,7 @@ public sealed class Game
         _hands = other._hands.Select(h => new List<Pos>(h)).ToArray();
         _prospected = (bool[])other._prospected.Clone();
         _boughtThisTurn = other._boughtThisTurn;
+        InterestThisTurn = other.InterestThisTurn;
         _rng = other._rng.Fork();
         CurrentPlayerIndex = other.CurrentPlayerIndex;
         Turn = other.Turn;
@@ -165,9 +166,14 @@ public sealed class Game
 
     // ------------------------------------------------------------------ turns
 
+    /// <summary>Modern: the interest the current player was paid at the start of this turn.</summary>
+    public BigInteger InterestThisTurn { get; private set; }
+
     private void BeginTurn()
     {
         _boughtThisTurn = 0;
+        InterestThisTurn = IsModern ? CurrentPlayer.Money * ModernRules.InterestPercent / 100 : 0;
+        CurrentPlayer.Money += InterestThisTurn;
         _choices = IsModern ? RefreshHand(CurrentPlayerIndex) : GenerateChoices();
         Phase = _choices.Count == 0 ? GamePhase.Over : GamePhase.ChoosingSquare;
     }

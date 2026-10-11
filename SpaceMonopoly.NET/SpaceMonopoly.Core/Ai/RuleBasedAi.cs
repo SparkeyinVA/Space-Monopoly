@@ -118,8 +118,10 @@ public sealed class RuleBasedAi : IAiPlayer
         var orders = new List<TradeOrder>();
         var me = game.CurrentPlayer;
         var ratio = Heuristics.ReturnPerUnit(game, game.CurrentWorld);
+        // In Modern, cash earns interest, so only companies expected to beat it are worth buying.
+        double interest = Heuristics.InterestReturn(game, game.CurrentPlayerIndex);
         var ranked = Enumerable.Range(0, game.Companies.Length)
-            .Where(c => game.Companies[c].Exists && ratio[c] > 0)
+            .Where(c => game.Companies[c].Exists && ratio[c] > interest)
             .OrderByDescending(c => ratio[c])
             .ToList();
         if (ranked.Count == 0) return orders;

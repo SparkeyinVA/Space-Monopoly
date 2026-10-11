@@ -41,6 +41,7 @@ internal static class HelpForms
           • When a company grows, its share price rises, but there is no cash dividend.
           • Founding a company gives you 3 free shares and no cash.
           • You can buy up to 100 shares a turn, across all companies. Selling is unlimited.
+          • Cash earns 3% interest at the start of each of your turns, so it can be worth holding some back.
           • Each company has 1,000 shares, shared by all players. The company buttons show how many are left. A split doubles everyone's shares and the number left.
           • In a merger, shares in the company taken over are bought back at its share price; you don't get shares in the bigger company. Its largest shareholder gets a bonus of 10 times its share price, and the second-largest 5 times. Players tied for largest share both bonuses; players tied for second share the second bonus.
           • Modern scores have their own high score tables.

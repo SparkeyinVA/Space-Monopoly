@@ -64,6 +64,14 @@ internal static class Heuristics
         return growth;
     }
 
+    /// <summary>Modern: what a unit of cash held to the end of the game earns in interest.</summary>
+    public static double InterestReturn(Game game, int player)
+    {
+        if (!game.IsModern) return 0;
+        int turnsLeft = Math.Max(0, game.Rounds - game.Turn - (player < game.CurrentPlayerIndex ? 1 : 0));
+        return Math.Pow(1 + ModernRules.InterestPercent / 100.0, turnsLeft) - 1;
+    }
+
     /// <summary>Expected growth per unit of money invested in each company.</summary>
     public static double[] ReturnPerUnit(Game game, World world)
     {
@@ -89,9 +97,9 @@ internal static class Heuristics
         for (int c = 0; c < growth.Length; c++)
             expected += (double)pl.Shares[c] * growth[c];
 
-        // Cash can still be invested at the best available return.
+        // Cash can still be invested at the best available return, or in Modern earn interest.
         double bestRatio = ratio.Max();
-        expected += (double)pl.Money * bestRatio * 0.8;
+        expected += (double)pl.Money * Math.Max(bestRatio * 0.8, InterestReturn(game, player));
 
         return (double)game.NetWorth(player) + expected;
     }

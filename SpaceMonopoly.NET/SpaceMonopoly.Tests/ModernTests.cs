@@ -62,16 +62,32 @@ public class ModernTests
     public void Founding_gives_three_shares_and_no_cash_and_growth_pays_no_dividend()
     {
         var game = NewModern(circles: new Pos(5, 4));
+        var before = game.Players[0].Money;
         var founded = Assert.Single(Play(game, new Pos(5, 5)).OfType<CompanyFoundedEvent>());
         Assert.Equal(ModernRules.FreeShares, founded.FreeShares);
         Assert.Equal(0, founded.Bonus);
-        Assert.Equal(Game.StartingMoney, game.Players[0].Money);
+        Assert.Equal(before, game.Players[0].Money);
         Assert.Equal(ModernRules.SharesPerCompany, game.Companies[0].Supply);
         game.EndTurn();
 
         var grew = Assert.Single(Play(game, new Pos(6, 5)).OfType<CompanyExpandedEvent>());
         Assert.Empty(grew.Dividends);
-        Assert.Equal(Game.StartingMoney, game.Players[0].Money);
+        Assert.Equal(before, game.Players[0].Money);
+    }
+
+    [Fact]
+    public void Cash_earns_interest_at_the_start_of_each_turn()
+    {
+        var game = NewModern(players: 2);
+        Assert.Equal(Game.StartingMoney * ModernRules.InterestPercent / 100, game.InterestThisTurn);
+        Assert.Equal(Game.StartingMoney * (100 + ModernRules.InterestPercent) / 100, game.Players[0].Money);
+        Assert.Equal(Game.StartingMoney, game.Players[1].Money);   // paid on their own turn
+        game.PlaceSquare(game.Choices[0]);
+        game.EndTurn();
+        Assert.Equal(Game.StartingMoney * (100 + ModernRules.InterestPercent) / 100, game.Players[1].Money);
+
+        var classic = RulesTests.NewGame();
+        Assert.Equal(Game.StartingMoney, classic.Players[0].Money);
     }
 
     [Fact]
