@@ -10,45 +10,110 @@ namespace SpaceMonopoly.Core.Ai;
 /// </summary>
 public sealed class ClaudeCodeAi : IAiPlayer
 {
-    internal const string SystemPrompt = """
-        You are playing Space Monopoly, a board game about buying and selling shares, against other players.
-        Your goal is to finish with the highest net worth (cash plus shares at their final price).
+    /// <summary>
+    /// The instructions for this game: only its own rules (Classic, Tournament or Modern, taken from the rule
+    /// constants so they can't drift from the code), a strategy guide for that mode, and how to answer (S13).
+    /// </summary>
+    internal static string BuildSystemPrompt(Game game)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("You are playing Space Monopoly, a board game about founding companies and trading their shares, against other players.");
+        sb.AppendLine("Your goal is to finish with the highest net worth: cash plus shares at their final price" +
+                      (game.IsModern ? ", plus end-of-game payouts and your secret goal." : "."));
+        sb.AppendLine();
+        sb.AppendLine("RULES");
+        sb.AppendLine(game.IsModern
+            ? $"- You hold a private hand of {ModernRules.HandSize} squares (5 while you are alone in last place). Each turn you play one, then draw a new one."
+            : "- Each turn you must pick one of the numbered squares offered on the map.");
+        sb.AppendLine("- A square next to a planet (o) or star (*) but not next to a company founds a new company, if the company limit hasn't been reached.");
+        sb.AppendLine(game.IsModern
+            ? $"  The founder gets {ModernRules.FreeShares} free shares and no cash."
+            : $"  The founder gets {Game.FreeShares} free shares plus cash equal to the starting share price.");
+        sb.AppendLine($"- A square next to exactly one company grows it. The share price rises by {Game.SquareValue}, plus {Game.CircleBonus} for each planet next to the " +
+                      $"new square, plus {Game.DiamondBonus} for each star next to it (stars are absorbed into the company).");
+        sb.AppendLine(game.IsModern
+            ? "  There is no dividend: holders gain only through the higher share price."
+            : "  Every shareholder is also paid a cash dividend of (shares held x price rise).");
+        sb.AppendLine("- A square next to two or more companies merges them. The bigger company survives (ties go to the earlier letter).");
+        if (game.IsModern)
+        {
+            sb.AppendLine($"  The survivor's price rises by half the absorbed company's price. Shares in the absorbed company are bought back in cash at its price " +
+                          $"(you get no survivor shares). Its largest holder gets a bonus of {ModernRules.LargestHolderBonus}x its share price and the second-largest " +
+                          $"{ModernRules.SecondHolderBonus}x; you need at least {ModernRules.MinSharesForBonus} shares to qualify. Players tied for largest share both bonuses; " +
+                          "players tied for second share the second bonus.");
+        }
+        else
+        {
+            sb.AppendLine("  Holders of the absorbed company are paid its share price in cash for each share AND get the same number of shares in the survivor. " +
+                          "The survivor's price rises by the absorbed company's whole price.");
+        }
+        sb.AppendLine("- Any other square just places a star.");
+        if (game.IsModern)
+        {
+            sb.AppendLine($"- Shares never split. Each company has {ModernRules.SharesPerCompany:N0} shares shared by all players.");
+            sb.AppendLine($"- After playing a square you may buy up to {ModernRules.BuyLimitPerTurn} shares this turn (across all companies) and sell any number.");
+            sb.AppendLine($"- Cash earns {ModernRules.InterestPercent}% interest at the start of each of your turns.");
+            sb.AppendLine($"- At the end of the game every company still in play pays its two largest holders {ModernRules.LargestHolderBonus}x and " +
+                          $"{ModernRules.SecondHolderBonus}x its share price, with the same minimum and tie rules as a merger.");
+            sb.AppendLine("- From round 3 an event card is played at the start of each round; the next round's card is always announced in advance.");
+            sb.AppendLine("- Each player has a secret goal worth a cash reward at the end.");
+            sb.AppendLine("- Once per turn, before playing, you may swap one square in your hand for a new one. Once per game you may prospect: replace your whole hand.");
+        }
+        else
+        {
+            sb.AppendLine($"- Share prices of {Game.SplitThreshold:N0} or more split two-for-one: the price halves and everyone's shares double.");
+            sb.AppendLine("- Share prices never fall, and cash earns nothing.");
+            sb.AppendLine("- After placing your square you may buy and sell any number of shares at the current prices.");
+        }
+        if (game.Type == GameType.Tournament)
+            sb.AppendLine("- Tournament: everyone started from the same board, but the board and companies shown are yours alone. Opponents play on their own copies.");
+        sb.AppendLine();
 
-        Rules:
-        - Each turn you must pick one of the numbered squares offered on the map.
-        - A square next to a circle (o) or star (*) but not next to a company founds a new company, if the
-          board's company limit hasn't been reached. The founder gets 5 free shares plus cash equal to the starting share price.
-        - A square next to exactly one company grows it. The share price rises by 100, plus 500 for each circle
-          next to the new square, plus 100 for each star next to it (stars get absorbed into the company).
-          Every shareholder is paid a dividend of (shares held x price rise).
-        - A square next to two or more companies merges them. The bigger company survives (ties go to the earlier
-          letter). Holders of the absorbed company are paid its share price in cash for each share AND get the
-          same number of shares in the survivor. The survivor's price rises by the absorbed company's price.
-        - Any other square just places a star.
-        - Share prices of 3,200 or more split two-for-one: the price halves and everyone's shares double.
-        - Share prices never fall, so cash that isn't invested earns nothing.
-        - After placing your square you may buy and sell shares at the current prices. Trades happen in order.
+        sb.AppendLine("STRATEGY");
+        if (game.IsModern)
+        {
+            sb.AppendLine("- Holding the company that SURVIVES a merger is a big money-maker: its price jumps by half the absorbed company's price.");
+            sb.AppendLine($"- Race for first or second place (at least {ModernRules.MinSharesForBonus} shares) in companies likely to be ABSORBED, and in every company " +
+                          "you expect to survive to the end: both pay majority bonuses. Defend a first place you already hold.");
+            sb.AppendLine("- Use your hand to plan: keep squares you'll want later, and don't play a merger square while an opponent would win the bonus.");
+            sb.AppendLine($"- Keep some cash: it earns interest, and the {ModernRules.BuyLimitPerTurn}-share limit means you can't spend everything at once anyway.");
+            sb.AppendLine("- Prepare for next round's announced event, and play towards your secret goal.");
+            sb.AppendLine("- Swap a square that does nothing for you. Prospect only when your whole hand is poor.");
+        }
+        else
+        {
+            sb.AppendLine("- Buy the cheapest company that can grow: every square adds the same amount to the price whatever the price is, so cheap shares gain most per Galactic Buck.");
+            sb.AppendLine("- Hold whatever is about to grow, because every growth pays you a dividend on top of the higher price.");
+            sb.AppendLine("- Avoid growing or merging companies your opponents hold more of than you do.");
+            sb.AppendLine("- Late in the game, sell companies that can no longer grow and move the money to ones that can.");
+        }
+        sb.AppendLine();
 
-        Strategy hints from the original game's author:
-        - Cheap companies (about 200) next to circles grow fastest relative to their price.
-        - Found companies close together so they can merge later; mergers make holders of the smaller company rich.
-        - Be careful merging when an opponent holds more of the smaller company than you do.
-        - Late in the game, move money out of companies that can't grow any more.
-
-        Answer with JSON only, using the schema you're given. "choice" is the number of the square you pick.
-        "trades" are executed after your square is placed, at the prices shown for that square's outcome.
-        Use quantity 0 to mean "as many as possible" (buy max, or sell all). "comment" is one short sentence
-        explaining your move, written for the other players to read.
-        """;
+        sb.AppendLine("ANSWER");
+        sb.AppendLine("Answer with JSON only, using the schema you're given.");
+        sb.AppendLine("- \"choice\": the number of the square you play.");
+        sb.AppendLine("- \"trades\": done after your square is played, at the prices shown for that square's outcome. Quantity 0 means as many as possible (buy max or sell all).");
+        sb.AppendLine("- \"comment\": one short sentence explaining your move, for the other players to read.");
+        sb.AppendLine("- \"plan\": one or two sentences on what you intend next turn. It will be shown back to you then.");
+        if (game.IsModern)
+        {
+            sb.AppendLine("- \"swap\" (optional): the number of a square to throw away and replace BEFORE playing. You'll then be asked again with the new hand.");
+            sb.AppendLine("- \"prospect\" (optional): true to replace your whole hand before playing (once per game). You'll then be asked again.");
+        }
+        return sb.ToString();
+    }
 
     internal const string Schema = """
-        {"type":"object","properties":{"choice":{"type":"integer","minimum":1,"maximum":5},"trades":{"type":"array","items":{"type":"object","properties":{"action":{"type":"string","enum":["buy","sell"]},"company":{"type":"string","enum":["A","B","C","D","E","F","G","H","I","J","K","L"]},"quantity":{"type":"integer","minimum":0}},"required":["action","company","quantity"],"additionalProperties":false}},"comment":{"type":"string"}},"required":["choice","trades","comment"],"additionalProperties":false}
+        {"type":"object","properties":{"choice":{"type":"integer","minimum":1,"maximum":5},"trades":{"type":"array","items":{"type":"object","properties":{"action":{"type":"string","enum":["buy","sell"]},"company":{"type":"string","enum":["A","B","C","D","E","F","G","H","I","J","K","L"]},"quantity":{"type":"integer","minimum":0}},"required":["action","company","quantity"],"additionalProperties":false}},"comment":{"type":"string"},"plan":{"type":"string"},"swap":{"type":"integer","minimum":0,"maximum":5},"prospect":{"type":"boolean"}},"required":["choice","trades","comment","plan"],"additionalProperties":false}
         """;
 
     private readonly IClaudeRunner _runner;
     private readonly RuleBasedAi _fallback;
     private IReadOnlyList<TradeOrder>? _pendingTrades;
     private bool _usedFallback;
+
+    /// <summary>The plan Claude gave last turn, shown back to it this turn (only the latest is kept).</summary>
+    internal string? LastPlan { get; private set; }
 
     public ClaudeCodeAi(ClaudeCodeSettings settings, RuleBasedAi fallback)
         : this(new ClaudeCodeRunner(settings), fallback)
@@ -69,10 +134,20 @@ public sealed class ClaudeCodeAi : IAiPlayer
         _usedFallback = false;
         try
         {
-            var answer = await _runner.RunAsync(SystemPrompt, BuildPrompt(game), Schema, cancellationToken);
+            string system = BuildSystemPrompt(game);
+            var answer = await _runner.RunAsync(system, BuildPrompt(game, LastPlan), Schema, cancellationToken);
+
+            // A swap or prospect changes the hand, so Claude is asked again with the new one (at most twice).
+            for (int ask = 0; ask < 2 && ApplyHandChange(game, answer) is string change; ask++)
+            {
+                string note = $"You {change}. Here is your new hand; choose your square and trades.";
+                answer = await _runner.RunAsync(system, BuildPrompt(game, LastPlan, note), Schema, cancellationToken);
+            }
+
             var (square, trades, comment) = ParseAnswer(game, answer);
             _pendingTrades = trades;
             LastComment = comment;
+            if (answer.TryGetProperty("plan", out var plan) && plan.GetString() is { Length: > 0 } text) LastPlan = text.Trim();
             return square;
         }
         catch (Exception ex) when (ex is ClaudeCodeException or JsonException or KeyNotFoundException or InvalidOperationException)
@@ -90,6 +165,23 @@ public sealed class ClaudeCodeAi : IAiPlayer
         var trades = _pendingTrades;
         _pendingTrades = null;
         return Task.FromResult(trades);
+    }
+
+    /// <summary>Applies a swap or prospect from Claude's answer. Returns what happened, or null if the hand is unchanged.</summary>
+    internal static string? ApplyHandChange(Game game, JsonElement answer)
+    {
+        if (answer.TryGetProperty("prospect", out var p) && p.ValueKind == JsonValueKind.True && game.CanProspect)
+        {
+            game.Prospect();
+            return "prospected (replaced your whole hand)";
+        }
+        if (answer.TryGetProperty("swap", out var w) && w.ValueKind == JsonValueKind.Number && w.GetInt32() is int n
+            && n >= 1 && n <= game.Choices.Count && game.CanSwap)
+        {
+            game.Swap(game.Choices[n - 1]);
+            return $"swapped square {n} for a new one";
+        }
+        return null;
     }
 
     internal static (Pos Square, IReadOnlyList<TradeOrder> Trades, string Comment) ParseAnswer(Game game, JsonElement answer)
@@ -118,44 +210,38 @@ public sealed class ClaudeCodeAi : IAiPlayer
         return (square, trades, comment.Trim());
     }
 
-    /// <summary>Describes the position, including a preview of what each offered square would do.</summary>
-    internal static string BuildPrompt(Game game)
+    /// <summary>
+    /// Describes the position with the same information a human gets: each square's effect and every player's
+    /// net-worth change, holdings and majorities, the events and the buying allowance (S13).
+    /// </summary>
+    internal static string BuildPrompt(Game game, string? lastPlan = null, string? note = null)
     {
         var currency = Currency.Default; // Claude sees the default unit whatever the player has chosen.
         int me = game.CurrentPlayerIndex;
+        bool hidden = game.Rules.HideDetails || !game.SharedBoard;
+        bool Visible(int p) => p == me || !hidden;
+        string Who(int p) => p == me ? "you" : game.Players[p].Name;
         var sb = new StringBuilder();
 
-        sb.AppendLine($"You are {game.Players[me].Name}. Round {game.Turn + 1} of {game.Rounds} " +
-                      $"({game.Type} game, {game.Spec.Width}x{game.Spec.Height} board, {game.Players.Count} players, " +
-                      $"up to {game.Companies.Length} companies). Money is in Galactic Bucks (₲).");
+        sb.AppendLine($"You are {game.Players[me].Name}. Round {game.Turn + 1} of {game.Rounds} ({game.Rounds - game.Turn - 1} after this one). " +
+                      $"{game.Type} game, {game.Spec.Width}x{game.Spec.Height} board, {game.Players.Count} players, up to {game.Companies.Length} companies. " +
+                      "Money is in Galactic Bucks (₲).");
         if (game.NoMoreCompanies)
             sb.AppendLine($"No more companies can be formed, so the game ends after round {game.Rounds}.");
+        if (lastPlan is not null) sb.AppendLine($"Your plan last turn: {lastPlan}");
+        if (note is not null) sb.AppendLine(note);
         if (game.IsModern)
         {
-            sb.AppendLine($"Modern game: everyone shares this board. The squares on offer are your private hand of {ModernRules.HandSize}; you draw a new one after playing.");
-            sb.AppendLine($"Rules: growth raises the share price only (no cash dividends). You may buy at most {ModernRules.BuyLimitPerTurn} shares per turn " +
-                          $"(you have {game.BuyAllowanceLeft} left); selling is unlimited. Each company has {ModernRules.SharesPerCompany} shares in total and shares never split. " +
-                          $"Founding gives {ModernRules.FreeShares} free shares and no cash. In a merger the bigger company's price rises by half the smaller one's price; " +
-                          $"shares in the company taken over are paid out in cash at its price, " +
-                          $"and its largest holder gets a bonus of {ModernRules.LargestHolderBonus}x its share price, the second-largest {ModernRules.SecondHolderBonus}x " +
-                          $"(you need at least {ModernRules.MinSharesForBonus} shares to qualify). " +
-                          $"Cash earns {ModernRules.InterestPercent}% interest at the start of each of your turns, so holding cash can make sense.");
-            sb.AppendLine($"At the end of the game every company still in play also pays its two largest holders (at least {ModernRules.MinSharesForBonus} shares) " +
-                          $"{ModernRules.LargestHolderBonus}x and {ModernRules.SecondHolderBonus}x its share price, so majorities are worth fighting for.");
-            if (game.GoalOf(me) is SecretGoal goal)
-                sb.AppendLine($"Your secret goal (revealed at the end): {SecretGoals.Description(goal)}");
-            if (game.CurrentEvent is EventCard now)
-                sb.AppendLine($"Event this round: {EventCards.Title(now)} ({game.DescribeEvent(now)})");
-            if (game.NextEvent is EventCard next)
-                sb.AppendLine($"Event in round {game.NextEventRound}: {EventCards.Title(next)} ({game.DescribeEvent(next)}) Plan your trades for it.");
+            if (game.GoalOf(me) is SecretGoal goal) sb.AppendLine($"Your secret goal: {SecretGoals.Description(goal)}");
+            if (game.CurrentEvent is EventCard now) sb.AppendLine($"Event this round: {EventCards.Title(now)} ({game.DescribeEvent(now)})");
+            if (game.NextEvent is EventCard next) sb.AppendLine($"Event in round {game.NextEventRound}: {EventCards.Title(next)} ({game.DescribeEvent(next)})");
+            sb.AppendLine($"You can buy {game.BuyAllowanceLeft} more shares this turn. Swap available: {(game.CanSwap ? "yes" : "no")}. " +
+                          $"Prospect available: {(game.CanProspect ? "yes" : "no")}.");
         }
-        else if (game.Type == GameType.Classic)
-            sb.AppendLine("Classic game: everyone plays on this one board and shares its companies.");
-        else
-            sb.AppendLine("Tournament game: this board and its companies are yours alone; opponents have their own copies.");
         sb.AppendLine();
 
-        sb.AppendLine($"Map (x across, y down). Key: . empty, o circle, * star, {Company.LetterFor(0)}-{Company.LetterFor(game.Companies.Length - 1)} company squares, 1-5 squares offered to you.");
+        sb.AppendLine($"Map (x across, y down). Key: . empty, o planet, * star, {Company.LetterFor(0)}-{Company.LetterFor(game.Companies.Length - 1)} company squares, " +
+                      $"1-{game.Choices.Count} the squares you can play.");
         AppendMap(sb, game);
         sb.AppendLine();
 
@@ -164,11 +250,17 @@ public sealed class ClaudeCodeAi : IAiPlayer
         foreach (var c in game.Companies.Where(c => c.Exists))
         {
             any = true;
-            sb.Append($"  {c.Letter} = {c.Name}: price {currency.Format(c.Value)}, {game.Board.CompanySize(c.Index)} squares. Holdings:");
+            sb.Append($"  {c.Letter} = {c.Name}: price {currency.Format(c.Value)}, {game.Board.CompanySize(c.Index)} squares");
+            if (game.IsModern) sb.Append($", {game.SharesLeft(c.Index):N0} shares left");
+            sb.Append(". Holdings:");
             for (int p = 0; p < game.Players.Count; p++)
+                if (Visible(p)) sb.Append($" {Who(p)} {game.Players[p].Shares[c.Index]:N0};");
+            if (game.IsModern && !hidden)
             {
-                if (game.Type == GameType.Tournament && p != me) continue;
-                sb.Append($" {game.Players[p].Name} {game.Players[p].Shares[c.Index]:N0};");
+                var bonuses = Game.MajorityBonuses(Enumerable.Range(0, game.Players.Count).Select(p => (p, game.Players[p].Shares[c.Index])), c.Value);
+                sb.Append(bonuses.Count == 0
+                    ? $" No one holds the {ModernRules.MinSharesForBonus} shares needed for a majority bonus."
+                    : " Bonus now goes to: " + string.Join(", ", bonuses.OrderByDescending(b => b.Value).Select(b => $"{Who(b.Key)} {currency.Format(b.Value)}")) + ".");
             }
             sb.AppendLine();
         }
@@ -179,12 +271,12 @@ public sealed class ClaudeCodeAi : IAiPlayer
         for (int p = 0; p < game.Players.Count; p++)
         {
             var pl = game.Players[p];
-            string you = p == me ? " (you)" : "";
-            sb.AppendLine($"  {pl.Name}{you}: cash {currency.Format(pl.Money)}, net worth {currency.Format(game.NetWorth(p))}");
+            sb.AppendLine($"  {pl.Name}{(p == me ? " (you)" : "")}: net worth {currency.Format(game.NetWorth(p))}" +
+                          (Visible(p) ? $", cash {currency.Format(pl.Money)}" : ""));
         }
         sb.AppendLine();
 
-        sb.AppendLine("Your options:");
+        sb.AppendLine(game.IsModern ? "Your hand:" : "Your options:");
         for (int i = 0; i < game.Choices.Count; i++)
         {
             var square = game.Choices[i];
@@ -194,14 +286,18 @@ public sealed class ClaudeCodeAi : IAiPlayer
                 sb.AppendLine($"NOT ALLOWED ({why})");
                 continue;
             }
+            var preview = MovePreview.For(game, square);
             var sim = game.Clone();
+            sim.OfferOnlyForPreview(square);
             var events = sim.PlaceSquare(square);
             sb.AppendLine(string.Join(" ", events.Select(e => EventText.Describe(sim, e, currency))));
-            var prices = sim.Companies.Where(c => c.Exists).Select(c => $"{c.Letter} {currency.Format(c.Value)}");
-            sb.AppendLine($"     Afterwards: your cash {currency.Format(sim.CurrentPlayer.Money)}; prices {string.Join(", ", prices)}.");
+            var gains = preview.NetWorthChange.Select((amount, p) => (amount, p)).Where(t => t.amount != 0 && Visible(t.p))
+                .Select(t => $"{Who(t.p)} {(t.amount > 0 ? "+" : "")}{currency.Format(t.amount)}").ToList();
+            sb.AppendLine($"     Net worth change: {(gains.Count == 0 ? "none" : string.Join(", ", gains))}. " +
+                          $"Prices afterwards: {string.Join(", ", sim.Companies.Where(c => c.Exists).Select(c => $"{c.Letter} {currency.Format(c.Value)}"))}.");
         }
         sb.AppendLine();
-        sb.AppendLine("Pick your square and any trades.");
+        sb.AppendLine("Pick your square, any trades, and your plan for next turn.");
         return sb.ToString();
     }
 

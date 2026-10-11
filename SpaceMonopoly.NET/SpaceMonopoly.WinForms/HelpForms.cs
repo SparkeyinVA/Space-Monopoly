@@ -64,7 +64,7 @@ internal static class HelpForms
 
         COMPUTER PLAYERS
           • Easy plays mostly at random. Medium picks the square that looks best right now and buys the best-value shares. Hard thinks through each square and its trades, sells shares that have stopped growing and watches the leading opponent.
-          • Claude players ask Claude, through your Claude Code login, for each move. A short comment explaining the move appears in the game log. Each move takes 10-30 seconds; settings are under Options > Preferences > Claude.
+          • Claude players ask Claude, through your Claude Code login, for each move. A short comment explaining the move appears in the game log. Claude sees the same information you do (what each square would do for every player, and who leads each company), keeps a plan from one turn to the next, and in Modern can swap a square or prospect. Each move takes 10-30 seconds; settings are under Options > Preferences > Claude. A stronger model (opus) or higher effort plays better, but each move takes longer.
         """;
 
     public static void ShowHowToPlay(IWin32Window owner)
