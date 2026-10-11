@@ -16,13 +16,20 @@ public sealed class RuleBasedAi : IAiPlayer
 {
     private readonly Random _rng;
 
-    public RuleBasedAi(AiLevel level, int? seed = null)
+    public RuleBasedAi(AiLevel level, int? seed = null, Personality personality = Personality.None)
     {
         Level = level;
+        Personality = personality;
+        _profile = Personalities.Profile(personality);
         _rng = seed is int s ? new Random(s) : new Random();
     }
 
+    private readonly PersonalityProfile _profile;
+
     public AiLevel Level { get; }
+
+    /// <summary>How this player likes to play (S9). It changes the weighting of moves, not the skill level.</summary>
+    public Personality Personality { get; }
 
     /// <summary>Normal: how often it plays its second-best square instead of its best (S9). Adaptive difficulty moves it.</summary>
     public double SecondBestChance { get; set; } = 0.3;
@@ -73,6 +80,9 @@ public sealed class RuleBasedAi : IAiPlayer
                 AiLevel.Normal => ScoreAfterTrades(sim, me, opponentWeight: 0.25),
                 _ => ScoreAfterTrades(sim, me, opponentWeight: 0.5),
             };
+            // A personality's taste for mergers or founding, scaled to the player's wealth.
+            if (Level != AiLevel.Easy) score += PersonalityBias(game, square, me);
+
             // Small random tie-breaker so equal squares aren't always picked in the same order.
             score += _rng.NextDouble() * 0.01;
 
@@ -90,6 +100,16 @@ public sealed class RuleBasedAi : IAiPlayer
         return best;
     }
 
+    private double PersonalityBias(Game game, Pos square, int me)
+    {
+        if (_profile.MergerBias == 0 && _profile.FoundBias == 0) return 0;
+        var around = game.Board.Survey(square);
+        double worth = (double)game.NetWorth(me);
+        if (around.Companies.Count > 1) return _profile.MergerBias * worth;
+        if (around.Companies.Count == 0 && around.NextToCircleOrDiamond && game.Companies.Any(c => !c.Exists)) return _profile.FoundBias * worth;
+        return 0;
+    }
+
     private double ScoreAfterTrades(Game sim, int me, double opponentWeight)
     {
         TradeExecutor.Apply(sim, PlanTrades(sim));
@@ -104,7 +124,7 @@ public sealed class RuleBasedAi : IAiPlayer
         {
             AiLevel.Easy => PlanEasyTrades(game, existing),
             AiLevel.Medium or AiLevel.Normal => PlanInvestment(game, sellThreshold: null, readEvents: false),
-            _ => PlanInvestment(game, sellThreshold: HardSells(game) ? HardSellThreshold : null, readEvents: true),
+            _ => PlanInvestment(game, sellThreshold: HardSells(game) ? _profile.SellAt : null, readEvents: true),
         };
     }
 
@@ -128,20 +148,17 @@ public sealed class RuleBasedAi : IAiPlayer
     }
 
     /// <summary>
-    /// Sells holdings that are growing much slower than the best company (Hard only), then spends
-    /// as much as possible on the best expected return, then the next best with what's left.
-    /// </summary>
-    /// <summary>Hard sells holdings growing slower than this share of the best company's rate.</summary>
-    private const double HardSellThreshold = 0.6;
-
-    /// <summary>
     /// Whether Hard sells to move money into faster-growing companies. Measured with the balance tool: it helps in
     /// Modern and in two-player Classic games, but in Classic with three or more players it let Medium win most games
     /// (Hard 32%, Medium 49% against Hard 49%, Medium 27% without selling).
     /// </summary>
     private static bool HardSells(Game game) => game.IsModern || game.Players.Count <= 2;
 
-    private static List<TradeOrder> PlanInvestment(Game game, double? sellThreshold, bool readEvents)
+    /// <summary>
+    /// Sells holdings that are growing much slower than the best company (Hard only), then spends
+    /// as much as possible on the best expected return, then the next best with what's left.
+    /// </summary>
+    private List<TradeOrder> PlanInvestment(Game game, double? sellThreshold, bool readEvents)
     {
         var orders = new List<TradeOrder>();
         var me = game.CurrentPlayer;
@@ -151,13 +168,14 @@ public sealed class RuleBasedAi : IAiPlayer
         if (readEvents)
         {
             var effect = Heuristics.NextEventEffect(game);
-            for (int c = 0; c < ratio.Length; c++) ratio[c] += effect[c];
+            for (int c = 0; c < ratio.Length; c++) ratio[c] += effect[c] < 0 ? effect[c] * _profile.EventCaution : effect[c];
         }
         // In Modern, cash earns interest, so only companies expected to beat it are worth buying.
         double interest = Heuristics.InterestReturn(game, game.CurrentPlayerIndex);
         var ranked = Enumerable.Range(0, game.Companies.Length)
             .Where(c => game.Companies[c].Exists && ratio[c] > interest)
             .OrderByDescending(c => ratio[c])
+            .Take(_profile.GrowthCompanies)
             .ToList();
         if (ranked.Count == 0 && !game.IsModern) return orders;
 
@@ -184,8 +202,16 @@ public sealed class RuleBasedAi : IAiPlayer
         // Modern caps how many shares can be bought in a turn and how many each company has left.
         var allowance = game.BuyAllowanceLeft;
 
+        // A Hoarder keeps part of its net worth back as cash early on and buys in late (Modern, where cash earns interest).
+        if (game.IsModern && _profile.CashKeep > 0)
+        {
+            double share = _profile.CashKeep * Math.Max(0, game.Rounds - game.Turn - 1) / Math.Max(1, game.Rounds);
+            var keep = new BigInteger((double)game.NetWorth(self) * share);
+            cash = BigInteger.Max(0, cash - keep);
+        }
+
         // Modern: first buy into majorities (F4), where a stake earns a bonus worth more than buying for growth.
-        if (game.IsModern) BuyStakes(game, ratio, orders, ref cash, ref allowance);
+        if (game.IsModern) BuyStakes(game, ratio, orders, ref cash, ref allowance, _profile.BonusWeight);
 
         foreach (int c in ranked)
         {
@@ -206,7 +232,7 @@ public sealed class RuleBasedAi : IAiPlayer
     /// Modern: buys the stakes that raise the player's majority bonuses the most for the money, as long as each
     /// beats the interest cash would earn. Tries reaching the 10-share minimum and overtaking or tying each rival.
     /// </summary>
-    private static void BuyStakes(Game game, double[] ratio, List<TradeOrder> orders, ref BigInteger cash, ref BigInteger allowance)
+    private static void BuyStakes(Game game, double[] ratio, List<TradeOrder> orders, ref BigInteger cash, ref BigInteger allowance, double bonusWeight)
     {
         int me = game.CurrentPlayerIndex;
         var held = game.CurrentPlayer.Shares.ToArray();
@@ -231,7 +257,7 @@ public sealed class RuleBasedAi : IAiPlayer
 
                 foreach (var qty in targets.Where(q => q > 0 && q <= cap).Distinct())
                 {
-                    double gain = Heuristics.BonusAt(game, me, c, held[c] + qty) - now;
+                    double gain = (Heuristics.BonusAt(game, me, c, held[c] + qty) - now) * bonusWeight;
                     if (gain <= 0) continue;
                     double score = gain / ((double)qty * company.Value) + ratio[c];
                     if (score > best.Score) best = (c, qty, score);

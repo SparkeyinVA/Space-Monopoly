@@ -45,13 +45,13 @@ public static class TradeExecutor
 
 public static class AiFactory
 {
-    public static IAiPlayer Create(PlayerKind kind, ClaudeCodeSettings claudeSettings, int? seed = null) => kind switch
+    public static IAiPlayer Create(PlayerKind kind, ClaudeCodeSettings claudeSettings, int? seed = null, Personality personality = Personality.None) => kind switch
     {
-        PlayerKind.ComputerEasy => new RuleBasedAi(AiLevel.Easy, seed),
-        PlayerKind.ComputerMedium => new RuleBasedAi(AiLevel.Medium, seed),
-        PlayerKind.ComputerNormal => new RuleBasedAi(AiLevel.Normal, seed),
-        PlayerKind.ComputerHard => new RuleBasedAi(AiLevel.Hard, seed),
-        PlayerKind.Claude => new ClaudeCodeAi(claudeSettings, new RuleBasedAi(AiLevel.Hard, seed)),
+        PlayerKind.ComputerEasy => new RuleBasedAi(AiLevel.Easy, seed, personality),
+        PlayerKind.ComputerMedium => new RuleBasedAi(AiLevel.Medium, seed, personality),
+        PlayerKind.ComputerNormal => new RuleBasedAi(AiLevel.Normal, seed, personality),
+        PlayerKind.ComputerHard => new RuleBasedAi(AiLevel.Hard, seed, personality),
+        PlayerKind.Claude => new ClaudeCodeAi(claudeSettings, new RuleBasedAi(AiLevel.Hard, seed, personality)) { Personality = personality },
         _ => throw new ArgumentException($"{kind} is not a computer player.", nameof(kind)),
     };
 }

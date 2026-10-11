@@ -118,4 +118,11 @@ public class ClaudePromptTests
         Assert.False(game.CanSwap);
         Assert.Equal(2, runner.Calls.Count);
     }
+
+    [Fact]
+    public void A_personality_adds_its_paragraph()
+    {
+        Assert.Contains("RAIDER", ClaudeCodeAi.BuildSystemPrompt(Modern(), Personality.Raider));
+        Assert.DoesNotContain("PERSONALITY", ClaudeCodeAi.BuildSystemPrompt(Modern()));
+    }
 }

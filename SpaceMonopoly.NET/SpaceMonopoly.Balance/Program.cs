@@ -10,9 +10,15 @@ using SpaceMonopoly.Core.Ai;
 //   dotnet run -c Release --project SpaceMonopoly.Balance -- --type Modern --size Medium --players Hard,Medium,Easy --games 200
 //
 // --type Modern|Classic|Tournament   --size Small|Medium|Large   --players a comma list of Easy, Medium and Hard
+//   dotnet run -c Release --project SpaceMonopoly.Balance -- --personalities yes   four Hard players, one of each personality
 // --chaos Calm|Standard|Wild|None (Modern events, default Standard)   --games N (default 200)   --seed N (first seed, default 1)
 
 var options = Options.Parse(args);
+if (options.Personalities)
+{
+    PersonalityReport.Run(options.Classic ? GameType.Classic : GameType.Modern, options.Games, options.Seed, options.Chaos);
+    return;
+}
 if (options.Custom)
 {
     var results = Simulator.Run(options.Type, options.Size, options.Players, options.Games, options.Seed, options.Chaos);
@@ -40,7 +46,7 @@ var mixed = Simulator.Run(type, GridSize.Medium, [AiLevel.Hard, AiLevel.Medium, 
 Report.Print(mixed);
 Report.PrintWinRates(mixed, "Wins by level");
 
-internal sealed record Options(bool Custom, bool Classic, GameType Type, GridSize Size, AiLevel[] Players, int Games, int Seed, Chaos Chaos)
+internal sealed record Options(bool Custom, bool Personalities, bool Classic, GameType Type, GridSize Size, AiLevel[] Players, int Games, int Seed, Chaos Chaos)
 {
     public static Options Parse(string[] args)
     {
@@ -50,6 +56,7 @@ internal sealed record Options(bool Custom, bool Classic, GameType Type, GridSiz
 
         return new Options(
             Custom: map.ContainsKey("type") || map.ContainsKey("players") || map.ContainsKey("size"),
+            Personalities: map.ContainsKey("personalities"),
             Classic: map.ContainsKey("classic"),
             Type: Enum.Parse<GameType>(Get("type", "Modern"), ignoreCase: true),
             Size: Enum.Parse<GridSize>(Get("size", "Medium"), ignoreCase: true),
@@ -212,5 +219,59 @@ internal static class Report
         double pos = q * (sorted.Count - 1);
         int lo = (int)Math.Floor(pos), hi = (int)Math.Ceiling(pos);
         return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+    }
+}
+
+/// <summary>Four Hard players, one of each personality, rotating seats: how differently they play and how often each wins (S9).</summary>
+internal static class PersonalityReport
+{
+    private sealed record Stats(Personality Personality, bool Won, double CashShareSum, int CashCount, int Mergers, int Founded);
+
+    public static void Run(GameType type, int games, int firstSeed, Chaos chaos)
+    {
+        var all = new List<Stats>[games];
+        Parallel.For(0, games, g => all[g] = Play(type, firstSeed + g, chaos));
+        var rows = all.SelectMany(x => x).ToList();
+        Console.WriteLine($"Personalities: four Hard players, {type}, medium grid, {games} games");
+        Console.WriteLine($"  {"Personality",-12} {"Wins",8} {"Cash share",12} {"Mergers/game",14} {"Founded/game",14}");
+        foreach (var p in Personalities.Playable)
+        {
+            var mine = rows.Where(r => r.Personality == p).ToList();
+            Console.WriteLine($"  {p,-12} {100.0 * mine.Count(r => r.Won) / games,7:0.0}% {100 * mine.Sum(r => r.CashShareSum) / Math.Max(1, mine.Sum(r => r.CashCount)),11:0.0}% " +
+                              $"{mine.Average(r => r.Mergers),14:0.00} {mine.Average(r => r.Founded),14:0.00}");
+        }
+        Console.WriteLine("  Target: each personality wins 20-35%, and they play visibly differently.");
+    }
+
+    private static List<Stats> Play(GameType type, int seed, Chaos chaos)
+    {
+        var spec = GridSpec.For(GridSize.Medium);
+        var board = new Board(spec.Width, spec.Height);
+        board.Randomise(new Random(seed), type == GameType.Modern ? ModernRules.PlanetOdds : Board.CircleOdds);
+        var seats = Enumerable.Range(0, 4).Select(i => Personalities.Playable[(i + seed) % 4]).ToArray();
+        var game = new Game(spec, board, seats.Select(p => (p.ToString(), PlayerKind.ComputerHard)), type, new GameRules { Chaos = chaos }, seed);
+        var ais = seats.Select((p, i) => new RuleBasedAi(AiLevel.Hard, seed * 31 + i, p)).ToArray();
+        var cash = new double[4];
+        var counts = new int[4];
+        var mergers = new int[4];
+        var founded = new int[4];
+
+        while (game.Phase != GamePhase.Over)
+        {
+            int me = game.CurrentPlayerIndex;
+            var events = game.PlaceSquare(ais[me].ChooseSquare(game));
+            mergers[me] += events.OfType<MergerEvent>().Count();
+            founded[me] += events.OfType<CompanyFoundedEvent>().Count();
+            TradeExecutor.Apply(game, ais[me].PlanTrades(game));
+            var worth = game.NetWorth(me);
+            if (worth > 0)
+            {
+                cash[me] += (double)game.CurrentPlayer.Money / (double)worth;
+                counts[me]++;
+            }
+            game.EndTurn();
+        }
+        int winner = Enumerable.Range(0, 4).OrderByDescending(game.NetWorth).First();
+        return Enumerable.Range(0, 4).Select(i => new Stats(seats[i], i == winner, cash[i], counts[i], mergers[i], founded[i])).ToList();
     }
 }

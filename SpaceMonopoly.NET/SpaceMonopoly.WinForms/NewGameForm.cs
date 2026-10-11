@@ -12,8 +12,12 @@ internal sealed class NewGameForm : Form
         [PlayerKind.Human, PlayerKind.ComputerEasy, PlayerKind.ComputerMedium, PlayerKind.ComputerNormal, PlayerKind.ComputerHard, PlayerKind.Claude];
 
     private readonly TextBox _name = new() { MaxLength = 15, Width = 150 };
-    private readonly ComboBox _kind = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 180 };
-    private readonly ListView _players = Ui.Table(("Name", 140), ("Player type", 170));
+    private readonly ComboBox _kind = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160 };
+    private readonly ComboBox _personality = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 110 };
+    private readonly ListView _players = Ui.Table(("Name", 140), ("Player type", 160), ("Personality", 110));
+
+    // The personality list: none, random, then the four personalities.
+    private static readonly string[] PersonalityChoices = ["None", "Random", .. Personalities.Playable.Select(p => p.ToString())];
     private readonly RadioButton _modern = new() { Text = "Modern — 25 rounds, a hand of squares, majority bonuses (about 15–30 minutes)", AutoSize = true };
     private readonly RadioButton _classic = new() { Text = "Classic — the 2001 rules: everyone shares one board", AutoSize = true };
     private readonly RadioButton _tournament = new() { Text = "Tournament — everyone gets their own copy of the same board", AutoSize = true };
@@ -21,7 +25,7 @@ internal sealed class NewGameForm : Form
     private readonly Button _add, _remove, _up, _down, _go;
     private readonly ClaudeCodeSettings _claudeSettings;
 
-    public NewGameForm(ClaudeCodeSettings claudeSettings, IReadOnlyList<(string Name, PlayerKind Kind)> previous, GameType lastType, Chaos lastChaos)
+    public NewGameForm(ClaudeCodeSettings claudeSettings, IReadOnlyList<PlayerSetup> previous, GameType lastType, Chaos lastChaos)
     {
         _claudeSettings = claudeSettings;
         SuspendLayout();
@@ -33,10 +37,15 @@ internal sealed class NewGameForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoScaleDimensions = new SizeF(96f, 96f);
         Font = new Font("Segoe UI", 9f);
-        ClientSize = new Size(620, 530);
+        ClientSize = new Size(700, 530);
 
         foreach (var k in Kinds) _kind.Items.Add(k.Label());
         _kind.SelectedIndex = 0;
+        _personality.Items.AddRange(PersonalityChoices);
+        _personality.SelectedIndex = 0;
+        _personality.Enabled = false;
+        new ToolTip().SetToolTip(_personality, "How a computer or Claude player likes to play: Raider goes after mergers and majority bonuses, " +
+                                               "Tycoon founds and holds companies, Hoarder keeps cash and avoids risk, Gambler bets big on one company.");
 
         _add = Ui.Button("Add", (_, _) => AddPlayer(), 80);
         _remove = Ui.Button("Remove", (_, _) => RemovePlayer());
@@ -49,12 +58,12 @@ internal sealed class NewGameForm : Form
         AcceptButton = _add;
 
         var addRow = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 8, 8, 0), WrapContents = false };
-        addRow.Controls.AddRange([Ui.Label("Name:"), _name, Ui.Label("Plays as:"), _kind, _add]);
+        addRow.Controls.AddRange([Ui.Label("Name:"), _name, Ui.Label("Plays as:"), _kind, _personality, _add]);
         foreach (Control c in addRow.Controls) c.Anchor = AnchorStyles.Left;
 
         var help = Ui.Label("Add players in the order they will play. Computer players can be mixed with humans; " +
                             "Claude players think using your Claude Code login.");
-        help.MaximumSize = new Size(590, 0);
+        help.MaximumSize = new Size(670, 0);
         help.Dock = DockStyle.Top;
         help.Padding = new Padding(8, 4, 8, 4);
 
@@ -86,17 +95,22 @@ internal sealed class NewGameForm : Form
         Controls.Add(Ui.ButtonBar(cancel, _go));
 
         _name.TextChanged += (_, _) => UpdateButtons();
-        _kind.SelectedIndexChanged += (_, _) => SuggestName();
+        _kind.SelectedIndexChanged += (_, _) =>
+        {
+            SuggestName();
+            _personality.Enabled = Kinds[_kind.SelectedIndex] != PlayerKind.Human;
+            if (!_personality.Enabled) _personality.SelectedIndex = 0;
+        };
         _players.SelectedIndexChanged += (_, _) => UpdateButtons();
         _players.DoubleClick += (_, _) => RemovePlayer();
 
-        foreach (var (name, kind) in previous) AddRow(name, kind);
+        foreach (var p in previous) AddRow(p);
         UpdateButtons();
         ResumeLayout(false);
         PerformLayout();
     }
 
-    public List<(string Name, PlayerKind Kind)> Players { get; } = [];
+    public List<PlayerSetup> Players { get; } = [];
 
     public Chaos Chaos => (Chaos)Math.Max(0, _chaos.SelectedIndex);
 
@@ -140,16 +154,19 @@ internal sealed class NewGameForm : Form
                                   "Options > Preferences > Claude. Until then this player will use the built-in Hard strategy.",
                 "Claude Code not found", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
-        AddRow(name, kind);
+        Personality? personality = kind == PlayerKind.Human ? Personality.None
+            : _personality.SelectedIndex switch { 0 => Personality.None, 1 => null, var i => Personalities.Playable[i - 2] };
+        AddRow(new PlayerSetup(name, kind, personality));
         _name.Text = "";
         if (kind != PlayerKind.Human) SuggestName();
         _name.Focus();
         UpdateButtons();
     }
 
-    private void AddRow(string name, PlayerKind kind)
+    private void AddRow(PlayerSetup setup)
     {
-        _players.Items.Add(new ListViewItem([name, kind.Label()]) { Tag = kind });
+        string personality = setup.Personality is Personality p ? (p == Personality.None ? "" : p.ToString()) : "Random";
+        _players.Items.Add(new ListViewItem([setup.Name, setup.Kind.Label(), personality]) { Tag = setup });
     }
 
     private void RemovePlayer()
@@ -186,8 +203,11 @@ internal sealed class NewGameForm : Form
     {
         Players.Clear();
         foreach (ListViewItem item in _players.Items)
-            Players.Add((item.Text, (PlayerKind)item.Tag!));
+            Players.Add((PlayerSetup)item.Tag!);
         DialogResult = DialogResult.OK;
         Close();
     }
 }
+
+/// <summary>A player set up in New Game. A null personality means "Random", decided when the game starts.</summary>
+internal sealed record PlayerSetup(string Name, PlayerKind Kind, Personality? Personality = Personality.None);

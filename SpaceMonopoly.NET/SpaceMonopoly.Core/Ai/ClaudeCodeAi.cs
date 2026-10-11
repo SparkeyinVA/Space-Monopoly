@@ -14,7 +14,7 @@ public sealed class ClaudeCodeAi : IAiPlayer
     /// The instructions for this game: only its own rules (Classic, Tournament or Modern, taken from the rule
     /// constants so they can't drift from the code), a strategy guide for that mode, and how to answer (S13).
     /// </summary>
-    internal static string BuildSystemPrompt(Game game)
+    internal static string BuildSystemPrompt(Game game, Personality personality = Personality.None)
     {
         var sb = new StringBuilder();
         sb.AppendLine("You are playing Space Monopoly, a board game about founding companies and trading their shares, against other players.");
@@ -89,6 +89,13 @@ public sealed class ClaudeCodeAi : IAiPlayer
         }
         sb.AppendLine();
 
+        if (personality != Personality.None)
+        {
+            sb.AppendLine("PERSONALITY");
+            sb.AppendLine(Personalities.ClaudeInstructions(personality) + " Stay true to this style, but still play to win.");
+            sb.AppendLine();
+        }
+
         sb.AppendLine("ANSWER");
         sb.AppendLine("Answer with JSON only, using the schema you're given.");
         sb.AppendLine("- \"choice\": the number of the square you play.");
@@ -112,6 +119,9 @@ public sealed class ClaudeCodeAi : IAiPlayer
     private IReadOnlyList<TradeOrder>? _pendingTrades;
     private bool _usedFallback;
 
+    /// <summary>How this Claude player likes to play (S9); a paragraph is added to its instructions.</summary>
+    public Personality Personality { get; init; }
+
     /// <summary>The plan Claude gave last turn, shown back to it this turn (only the latest is kept).</summary>
     internal string? LastPlan { get; private set; }
 
@@ -134,7 +144,7 @@ public sealed class ClaudeCodeAi : IAiPlayer
         _usedFallback = false;
         try
         {
-            string system = BuildSystemPrompt(game);
+            string system = BuildSystemPrompt(game, Personality);
             var answer = await _runner.RunAsync(system, BuildPrompt(game, LastPlan), Schema, cancellationToken);
 
             // A swap or prospect changes the hand, so Claude is asked again with the new one (at most twice).

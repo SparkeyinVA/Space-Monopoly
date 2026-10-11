@@ -16,7 +16,10 @@ internal sealed class MainForm : Form
     private IAiPlayer?[] _ais = [];
     private CancellationTokenSource? _cts;
     private bool _computerBusy;
-    private List<(string Name, PlayerKind Kind)> _lastPlayers = [("Player 1", PlayerKind.Human), ("Computer", PlayerKind.ComputerMedium)];
+    private List<PlayerSetup> _lastPlayers = [new("Player 1", PlayerKind.Human), new("Computer", PlayerKind.ComputerMedium)];
+
+    /// <summary>Each player's personality in the current game (Random already decided).</summary>
+    private Personality[] _personalities = [];
 
     // Menu
     private readonly ToolStripMenuItem _newGame, _endGame, _newGrid, _gridSize, _preferences;
@@ -303,11 +306,13 @@ internal sealed class MainForm : Form
         }
 
         // The game starts from the planets on the current grid; any companies left from the last game are cleared.
-        _game = new Game(Spec, _board, form.Players, form.GameType, _settings.Rules with { Chaos = form.Chaos });
-        _ais = _game.Players.Select(p => p.Kind.IsComputer() ? AiFactory.Create(p.Kind, _settings.Claude) : null).ToArray();
+        _game = new Game(Spec, _board, form.Players.Select(p => (p.Name, p.Kind)), form.GameType, _settings.Rules with { Chaos = form.Chaos });
+        _personalities = form.Players.Select(p => p.Personality ?? Personalities.Random(_rng)).ToArray();
+        _ais = _game.Players.Select((p, i) => p.Kind.IsComputer() ? AiFactory.Create(p.Kind, _settings.Claude, personality: _personalities[i]) : null).ToArray();
         _cts = new CancellationTokenSource();
 
-        string who = string.Join(", ", _game.Players.Select(p => $"{p.Name} ({p.Kind.Label()})"));
+        string who = string.Join(", ", _game.Players.Select((p, i) =>
+            $"{p.Name} ({p.Kind.Label()}{(_personalities[i] == Personality.None ? "" : $", {_personalities[i]}: {Personalities.Description(_personalities[i])}")})"));
         string goes = $"Each player gets {_game.GoesPerPlayer} goes";
         if (_game.GoesReduced)
             goes += $" (fewer than the usual {_game.MaxGoes}, so that everyone's goes fit on the board)";
@@ -661,6 +666,8 @@ internal sealed class MainForm : Form
                 : $"Game over after round {game.Turn}";
             _playerLabel.Text = inProgress ? player.Name : $"Winner: {game.Standings()[0].Name}";
             _kindLabel.Text = inProgress ? player.Kind.Label() : "";
+            if (inProgress && game.CurrentPlayerIndex < _personalities.Length && _personalities[game.CurrentPlayerIndex] is var mood and not Personality.None)
+                _kindLabel.Text += $" · {mood}: {Personalities.Description(mood)}";
             // A human sees their own secret goal on their turn.
             if (inProgress && player.IsHuman && game.GoalOf(game.CurrentPlayerIndex) is SecretGoal goal)
                 _kindLabel.Text += Environment.NewLine + "Your secret goal: " + SecretGoals.Description(goal);
@@ -715,7 +722,8 @@ internal sealed class MainForm : Form
             {
                 var pl = game.Players[p];
                 bool hidden = game.Rules.HideDetails && inProgress && p != game.CurrentPlayerIndex;
-                var row = Ui.Row((p == game.CurrentPlayerIndex && inProgress ? "▶ " : "   ") + pl.Name,
+                string personality = p < _personalities.Length && _personalities[p] != Personality.None ? $" ({_personalities[p]})" : "";
+                var row = Ui.Row((p == game.CurrentPlayerIndex && inProgress ? "▶ " : "   ") + pl.Name + personality,
                     hidden ? "hidden" : Currency.Format(game.NetWorth(p)));
                 row.Tag = p;
                 row.ToolTipText = pl.Kind.Label();

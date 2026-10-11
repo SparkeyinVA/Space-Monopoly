@@ -63,6 +63,7 @@ internal static class HelpForms
           • Late on, sell shares in companies that can't grow and buy into the big companies, which are more likely to grow.
 
         COMPUTER PLAYERS
+          • Each computer or Claude player can have a personality, chosen in New Game (or Random): Raider goes after mergers and majority bonuses, Tycoon founds companies and holds them, Hoarder keeps cash and avoids risk, and Gambler bets big on one company. A personality changes how a player likes to play, not how well it plays.
           • Easy plays mostly at random. Medium picks the square that looks best right now and buys the best-value shares. Normal looks ahead like Hard but sometimes settles for its second-best square, and trades like Medium. Hard thinks through each square and its trades, sells shares that have stopped growing and watches the leading opponent.
           • Claude players ask Claude, through your Claude Code login, for each move. A short comment explaining the move appears in the game log. Claude sees the same information you do (what each square would do for every player, and who leads each company), keeps a plan from one turn to the next, and in Modern can swap a square or prospect. Each move takes 10-30 seconds; settings are under Options > Preferences > Claude. A stronger model (opus) or higher effort plays better, but each move takes longer.
         """;
