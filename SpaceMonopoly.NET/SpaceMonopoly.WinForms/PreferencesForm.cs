@@ -13,7 +13,7 @@ internal sealed class PreferencesForm : Form
     private readonly RadioButton _postfix = new() { Text = "After the amount (100 ₲)", AutoSize = true };
     private readonly TrackBar _speed = new() { Minimum = 0, Maximum = 20, TickFrequency = 2, Width = 260 };
     private readonly Label _speedLabel = Ui.Label("");
-    private readonly CheckBox _popups = new() { Text = "Show pop-ups for computer players' new companies, mergers and splits", AutoSize = true };
+    private readonly CheckBox _popups = new() { Text = "Show pop-up windows for new companies, mergers and splits (otherwise they appear in the news line)", AutoSize = true };
 
     private readonly CheckBox _forceMergers = new() { Text = "Force mergers — if a merger is offered, it must be taken", AutoSize = true };
     private readonly CheckBox _forceExpansion = new() { Text = "Force expansion — if an expansion is offered, it must be taken", AutoSize = true };

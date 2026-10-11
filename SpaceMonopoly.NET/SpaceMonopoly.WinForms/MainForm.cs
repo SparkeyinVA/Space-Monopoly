@@ -50,6 +50,24 @@ internal sealed class MainForm : Form
     private readonly Button _endTurn;
     private readonly Button _prospect;
     private readonly Button _market;
+    private readonly ToolStripMenuItem _fast;
+    private const int FastDelayMs = 150;
+
+    // S8: a news line above the board for new companies, mergers, splits and events, which fades instead of stopping play.
+    private readonly Label _news = new()
+    {
+        Dock = DockStyle.Top,
+        AutoSize = false,
+        Height = 30,
+        TextAlign = ContentAlignment.MiddleLeft,
+        Padding = new Padding(10, 0, 10, 0),
+        BackColor = Color.FromArgb(14, 18, 44),
+        ForeColor = Color.FromArgb(14, 18, 44),
+        Font = new Font("Segoe UI", 10.5f, FontStyle.Bold),
+        AutoEllipsis = true,
+    };
+    private readonly System.Windows.Forms.Timer _newsTimer = new() { Interval = 100 };
+    private int _newsAge;
     private readonly Button _advisor;
     private bool _advisorEnabled;
     private int[] _advisorUses = [];
@@ -96,7 +114,8 @@ internal sealed class MainForm : Form
             .ToArray();
         _gridSize = new ToolStripMenuItem("&Grid Size", null, _sizeItems);
         _preferences = new ToolStripMenuItem("&Preferences...", null, (_, _) => ShowPreferences());
-        var options = new ToolStripMenuItem("&Options", null, _newGrid, _gridSize, new ToolStripSeparator(), _preferences);
+        _fast = new ToolStripMenuItem("&Fast computer players", null, (_, _) => ToggleFast(), Keys.Control | Keys.F) { Checked = _settings.ComputerDelayMs <= FastDelayMs };
+        var options = new ToolStripMenuItem("&Options", null, _newGrid, _gridSize, new ToolStripSeparator(), _fast, _preferences);
 
         var howTo = new ToolStripMenuItem("&How to Play", null, (_, _) => HelpForms.ShowHowToPlay(this, _game?.Type ?? _settings.LastGameType, Currency), Keys.F1);
         var about = new ToolStripMenuItem("&About Space Monopoly", null, (_, _) => HelpForms.ShowAbout(this));
@@ -186,6 +205,8 @@ internal sealed class MainForm : Form
         _boardView.SquareRightClicked += (_, p) => HumanSwaps(p);
 
         Controls.Add(_boardView);
+        Controls.Add(_news);
+        _newsTimer.Tick += (_, _) => FadeNews();
         Controls.Add(side);
         Controls.Add(menu);
         ResumeLayout(false);
@@ -474,7 +495,7 @@ internal sealed class MainForm : Form
 
         var events = game.PlaceSquare(square);
         if (!string.IsNullOrWhiteSpace(ai.LastComment)) Log($"{player.Name}: \"{ai.LastComment}\"");
-        ReportEvents(game, events, popups: _settings.ShowComputerPopups);
+        ReportEvents(game, events, popups: true);
         SettleConversions(game, events);
         RefreshAll();
 
@@ -581,6 +602,40 @@ internal sealed class MainForm : Form
         RefreshAll();
     }
 
+    /// <summary>Shows a line of news above the board; it stays for a few seconds and then fades.</summary>
+    private void ShowNews(string text)
+    {
+        _news.Text = text;
+        _newsAge = 0;
+        _news.ForeColor = Color.Gold;
+        new ToolTip().SetToolTip(_news, text);
+        _newsTimer.Start();
+    }
+
+    private void FadeNews()
+    {
+        const int hold = 60, fade = 20;   // tenths of a second
+        _newsAge++;
+        if (_newsAge <= hold) return;
+        double t = Math.Min(1, (_newsAge - hold) / (double)fade);
+        var from = Color.Gold;
+        var to = _news.BackColor;
+        _news.ForeColor = Color.FromArgb((int)(from.R + (to.R - from.R) * t), (int)(from.G + (to.G - from.G) * t), (int)(from.B + (to.B - from.B) * t));
+        if (t >= 1) _newsTimer.Stop();
+    }
+
+    /// <summary>Switches the computer players between a short pause and the speed set in Preferences (S8).</summary>
+    private void ToggleFast()
+    {
+        bool fast = _settings.ComputerDelayMs > FastDelayMs;
+        _settings = fast
+            ? _settings with { NormalComputerDelayMs = _settings.ComputerDelayMs, ComputerDelayMs = FastDelayMs }
+            : _settings with { ComputerDelayMs = _settings.NormalComputerDelayMs ?? 800 };
+        _fast.Checked = fast;
+        _storage.SaveSettings(_settings);
+        Log(fast ? "Computer players are now fast." : $"Computer players are back to a {_settings.ComputerDelayMs} ms pause.");
+    }
+
     private void ReportEvents(Game game, IReadOnlyList<GameEvent> events, bool popups)
     {
         foreach (var e in events)
@@ -591,8 +646,10 @@ internal sealed class MainForm : Form
                 for (int p = 0; p < game.Players.Count; p++)
                     if (game.Players[p].IsHuman && EventText.MergerSummaryFor(game, merger, events, p, Currency) is string summary)
                         Log($"{game.Players[p].Name}: {summary}");
-            // The end-of-game warning matters to everyone, so it pops up even for computer players.
-            if ((popups && e is CompanyFoundedEvent or MergerEvent or SplitEvent) || e is NoMoreCompaniesEvent)
+            if (e is CompanyFoundedEvent or MergerEvent or SplitEvent or EventCardEvent { Card: not EventCard.QuietQuarter })
+                ShowNews(EventText.Describe(game, e, Currency));
+            // The end-of-game warning matters to everyone, so it always pops up. Other pop-ups are optional (S8).
+            if ((popups && _settings.ShowComputerPopups && e is CompanyFoundedEvent or MergerEvent or SplitEvent) || e is NoMoreCompaniesEvent)
             {
                 RefreshAll();
                 Dialogs.ShowEvent(this, game, e, Currency);

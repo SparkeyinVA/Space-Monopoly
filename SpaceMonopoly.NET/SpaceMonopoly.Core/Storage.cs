@@ -33,8 +33,11 @@ public sealed record AppSettings
     /// <summary>Pause between a computer player's actions so you can follow along.</summary>
     public int ComputerDelayMs { get; init; } = 800;
 
-    /// <summary>Show pop-up dialogs for computer players' new companies, mergers and splits.</summary>
+    /// <summary>Show pop-up dialogs for new companies, mergers and splits. Off: they appear in the news line and log (S8).</summary>
     public bool ShowComputerPopups { get; init; }
+
+    /// <summary>The computer players' pause before "Fast" was switched on, to restore when it's switched off.</summary>
+    public int? NormalComputerDelayMs { get; init; }
 
     public ClaudeCodeSettings Claude { get; init; } = new();
 
