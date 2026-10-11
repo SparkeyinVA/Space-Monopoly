@@ -78,15 +78,16 @@ internal sealed class NewGameForm : Form
         var listHolder = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8, 4, 0, 4) };
         listHolder.Controls.Add(_players);
 
-        var typeBox = new GroupBox { Text = "Game type", Dock = DockStyle.Bottom, Height = 190, Padding = new Padding(10, 6, 10, 6) };
-        var typeFlow = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown };
+        // Sized to its options, one under the other: with a fixed height the last option wrapped into a second column.
+        var typeBox = new GroupBox { Text = "Game type", Dock = DockStyle.Bottom, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(10, 6, 10, 6) };
+        var typeFlow = new FlowLayoutPanel { Dock = DockStyle.Top, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true };
         _chaos.Items.AddRange(["Calm — events are rare", "Standard — an event most rounds", "Wild — something happens almost every round"]);
         _chaos.SelectedIndex = (int)lastChaos;
         var chaosRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(18, 0, 0, 0) };
         var chaosLabel = Ui.Label("Modern events:");
         chaosLabel.Anchor = _chaos.Anchor = AnchorStyles.Left;
         chaosRow.Controls.AddRange([chaosLabel, _chaos]);
-        _adaptive.Text = $"Adaptive difficulty: computer players get stronger when you win and weaker when you lose " +
+        _adaptive.Text = $"Adaptive difficulty: computer players get stronger when you win, weaker when you lose " +
                          $"(now: {AdaptiveDifficulty.At(adaptiveStep).Label})";
         _adaptive.Checked = adaptive;
         Ui.Tip(_adaptive, "Computer players (not Claude) play at the current step, whatever level they were added with. " +
