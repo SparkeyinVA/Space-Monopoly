@@ -27,7 +27,8 @@ public sealed record GridSpec(GridSize Size, int Width, int Height, int GoesPerP
 
 /// <summary>
 /// The playing grid. Cell values follow the original game: 0 = empty, 1 = circle (planet),
-/// 2 = diamond (star), 3 and up = company 0, 1, 2...
+/// 2 = diamond (star), 3 and up = company 0, 1, 2... Modern's special squares (S11) are negative:
+/// a nebula, a black hole and the two ends of a wormhole. None of them can be played.
 /// </summary>
 public sealed class Board
 {
@@ -35,6 +36,17 @@ public sealed class Board
     public const int Circle = 1;
     public const int Diamond = 2;
     public const int FirstCompany = 3;
+
+    /// <summary>S11: a company square next to a nebula gets double the planet bonus.</summary>
+    public const int Nebula = -1;
+
+    /// <summary>S11: squares next to a black hole can't be played.</summary>
+    public const int BlackHole = -2;
+
+    /// <summary>S11: the two ends of a wormhole count as next to each other.</summary>
+    public const int Wormhole = -3;
+
+    public static bool IsSpecial(int cell) => cell < 0;
 
     /// <summary>Chance of any square being a circle is 1 in this (GameGrid::randomise).</summary>
     public const int CircleOdds = 30;
@@ -54,7 +66,13 @@ public sealed class Board
         Width = other.Width;
         Height = other.Height;
         _cells = (int[])other._cells.Clone();
+        _wormholes = other._wormholes;
     }
+
+    // The wormhole ends, found when first needed and forgotten whenever one is placed or removed.
+    private Pos[]? _wormholes;
+
+    private Pos[] Wormholes => _wormholes ??= AllPositions().Where(p => this[p] == Wormhole).ToArray();
 
     public int Width { get; }
     public int Height { get; }
@@ -62,7 +80,12 @@ public sealed class Board
     public int this[int x, int y]
     {
         get => _cells[y * Width + x];
-        set => _cells[y * Width + x] = value;
+        set
+        {
+            ref int cell = ref _cells[y * Width + x];
+            if (cell == Wormhole || value == Wormhole) _wormholes = null;
+            cell = value;
+        }
     }
 
     public int this[Pos p]
@@ -87,13 +110,52 @@ public sealed class Board
                 yield return new Pos(x, y);
     }
 
-    /// <summary>The up/left/right/down neighbours that are on the board.</summary>
+    /// <summary>
+    /// The up/left/right/down neighbours that are on the board. Next to a wormhole end, the squares around the
+    /// other end count as neighbours too (S11), so companies can grow and merge across the board.
+    /// </summary>
     public IEnumerable<Pos> Neighbours(Pos p)
+    {
+        foreach (var n in Adjacent(p)) yield return n;
+        var ends = Wormholes;
+        if (ends.Length != 2) yield break;
+        for (int i = 0; i < 2; i++)
+        {
+            if (!Adjacent(p).Contains(ends[i])) continue;
+            foreach (var n in Adjacent(ends[1 - i]))
+                if (n != p) yield return n;
+        }
+    }
+
+    private IEnumerable<Pos> Adjacent(Pos p)
     {
         if (p.Y > 0) yield return p with { Y = p.Y - 1 };
         if (p.X > 0) yield return p with { X = p.X - 1 };
         if (p.X < Width - 1) yield return p with { X = p.X + 1 };
         if (p.Y < Height - 1) yield return p with { Y = p.Y + 1 };
+    }
+
+    /// <summary>
+    /// S11: places one nebula, one black hole and a wormhole pair on empty squares. The nebula goes next to a planet
+    /// where possible (so it matters), and the wormhole ends at least half the board apart.
+    /// </summary>
+    public void PlaceSpecials(Random rng)
+    {
+        List<Pos> Free() => AllPositions().Where(p => this[p] == Empty && Adjacent(p).All(n => !IsSpecial(this[n]))).ToList();
+        Pos Pick(List<Pos> from) => from[rng.Next(from.Count)];
+
+        var free = Free();
+        var nearPlanet = free.Where(p => Adjacent(p).Any(n => this[n] == Circle)).ToList();
+        if (free.Count == 0) return;
+        this[Pick(nearPlanet.Count > 0 ? nearPlanet : free)] = Nebula;
+        if ((free = Free()).Count == 0) return;
+        this[Pick(free)] = BlackHole;
+        if ((free = Free()).Count < 2) return;
+        var a = Pick(free);
+        var far = free.Where(p => Math.Abs(p.X - a.X) + Math.Abs(p.Y - a.Y) >= (Width + Height) / 2).ToList();
+        if (far.Count == 0) return;
+        this[a] = Wormhole;
+        this[Pick(far)] = Wormhole;
     }
 
     /// <summary>Fills the board with planets, about one in <paramref name="odds"/> squares.</summary>
@@ -103,11 +165,11 @@ public sealed class Board
             _cells[i] = rng.Next(odds) == 1 ? Circle : Empty;   // == 1, as in the original, so old seeds give the same boards
     }
 
-    /// <summary>Removes diamonds and company squares but keeps the circles.</summary>
+    /// <summary>Removes diamonds and company squares but keeps the circles and special squares.</summary>
     public void ClearPieces()
     {
         for (int i = 0; i < _cells.Length; i++)
-            if (_cells[i] != Circle) _cells[i] = Empty;
+            if (_cells[i] != Circle && !IsSpecial(_cells[i])) _cells[i] = Empty;
     }
 
     public int CountOf(int cellValue)
@@ -135,7 +197,7 @@ public sealed class Board
     /// </summary>
     public bool CanStillFoundCompany()
     {
-        bool Open(Pos p) => this[p] == Empty && Survey(p).Companies.Count == 0;
+        bool Open(Pos p) => this[p] == Empty && Survey(p) is { Companies.Count: 0, NearBlackHole: false };
 
         foreach (var p in AllPositions())
         {
@@ -150,6 +212,7 @@ public sealed class Board
     public Surroundings Survey(Pos p)
     {
         int circles = 0, diamonds = 0;
+        bool nebula = false, blackHole = false;
         var companies = new SortedSet<int>();
         foreach (var n in Neighbours(p))
         {
@@ -157,13 +220,17 @@ public sealed class Board
             if (cell == Circle) circles++;
             else if (cell == Diamond) diamonds++;
             else if (cell >= FirstCompany) companies.Add(CompanyOf(cell));
+            else if (cell == Nebula) nebula = true;
+            else if (cell == BlackHole) blackHole = true;
         }
-        return new Surroundings(circles, diamonds, companies.ToArray());
+        return new Surroundings(circles, diamonds, companies.ToArray(), nebula, blackHole);
     }
 }
 
 /// <summary>Neighbourhood of a square (comAdjoining in SMMain.cpp). Companies are in index order.</summary>
-public sealed record Surroundings(int Circles, int Diamonds, IReadOnlyList<int> Companies)
+/// <param name="NearNebula">S11: the square touches a nebula, so its planet bonus is doubled.</param>
+/// <param name="NearBlackHole">S11: the square touches a black hole, so it can't be played.</param>
+public sealed record Surroundings(int Circles, int Diamonds, IReadOnlyList<int> Companies, bool NearNebula = false, bool NearBlackHole = false)
 {
     public bool NextToCircleOrDiamond => Circles > 0 || Diamonds > 0;
 }

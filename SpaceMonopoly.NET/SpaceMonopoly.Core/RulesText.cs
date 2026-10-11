@@ -90,6 +90,11 @@ public static class RulesText
 
         if (modern)
         {
+            Line("SPECIAL SQUARES (medium and large grids)");
+            Line($"  • Nebula (purple cloud): a company square next to it gets double the planet bonus ({2 * Game.CircleBonus} a planet instead of {Game.CircleBonus}).");
+            Line("  • Black hole: squares next to it can't be played.");
+            Line("  • Wormhole (two cyan swirls): the two ends count as next to each other, so companies can grow and merge across the board through them.");
+            Line();
             Line("CASH, EVENTS AND CATCHING UP");
             Line($"  • Cash earns {ModernRules.InterestPercent}% interest at the start of each of your turns, so it can be worth holding some back.");
             Line("  • Events: from round 3, an event card is flipped at the start of each round, and the next round's card is always shown in advance " +

@@ -85,7 +85,9 @@ public static class Replay
     {
         var spec = GridSpec.For(GridSize.Medium);
         var board = new Board(spec.Width, spec.Height);
-        board.Randomise(new Random(DailySeed(date)), ModernRules.PlanetOdds);
+        var rng = new Random(DailySeed(date));
+        board.Randomise(rng, ModernRules.PlanetOdds);
+        board.PlaceSpecials(rng);
         return board;
     }
 }

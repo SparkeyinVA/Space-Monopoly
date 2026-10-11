@@ -35,7 +35,8 @@ internal static class Heuristics
             var s = board.Survey(cell);
             if (s.Companies.Count == 0) continue;
 
-            double squareGain = Game.SquareValue + Game.CircleBonus * s.Circles + Game.DiamondBonus * s.Diamonds;
+            if (s.NearBlackHole) continue;
+            double squareGain = Game.SquareValue + Game.CircleBonus * s.Circles * (s.NearNebula ? 2 : 1) + Game.DiamondBonus * s.Diamonds;
 
             if (s.Companies.Count == 1)
             {

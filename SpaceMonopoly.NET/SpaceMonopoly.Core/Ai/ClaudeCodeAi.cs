@@ -49,6 +49,9 @@ public sealed class ClaudeCodeAi : IAiPlayer
                           "The survivor's price rises by the absorbed company's whole price.");
         }
         sb.AppendLine("- Any other square just places a star.");
+        if (game.Board.AllPositions().Any(p => Board.IsSpecial(game.Board[p])))
+            sb.AppendLine("- Special squares (map: n nebula, x black hole, w wormhole) can't be played. A square next to a nebula gets double the planet bonus; " +
+                          "squares next to a black hole can't be played; the two wormhole ends count as next to each other, so companies can grow and merge through them.");
         if (game.IsModern)
         {
             sb.AppendLine($"- Shares never split. Each company has {ModernRules.SharesPerCompany:N0} shares shared by all players.");
@@ -376,6 +379,9 @@ public sealed class ClaudeCodeAi : IAiPlayer
                 char ch = choiceIndex.TryGetValue(pos, out int n) ? (char)('0' + n)
                     : cell == Board.Circle ? 'o'
                     : cell == Board.Diamond ? '*'
+                    : cell == Board.Nebula ? 'n'
+                    : cell == Board.BlackHole ? 'x'
+                    : cell == Board.Wormhole ? 'w'
                     : cell >= Board.FirstCompany ? Company.LetterFor(Board.CompanyOf(cell))
                     : '.';
                 sb.Append(ch);

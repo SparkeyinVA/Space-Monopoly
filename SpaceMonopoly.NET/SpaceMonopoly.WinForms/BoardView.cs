@@ -114,12 +114,19 @@ internal sealed class BoardView : Control
         int index = HitTest(e.Location) is Pos p ? IndexOfChoice(p) : -1;
         Cursor = AcceptClicks && index >= 0 ? Cursors.Hand : Cursors.Default;
 
+        // A special square (S11) gets its own tooltip, numbered from -10 so it can't clash with a choice.
+        if (index < 0 && HitTest(e.Location) is Pos q && _board is not null && Board.IsSpecial(_board[q])) index = -10 + _board[q];
         if (index == _tipChoice) return;
         HideTip();
         if (index >= 0 && index < _marks.Count)
         {
             _tipChoice = index;
             _tip.Show($"Square {index + 1}: " + _marks[index].Details, this, e.X + 16, e.Y + 20);
+        }
+        else if (index <= -10)
+        {
+            _tipChoice = index;
+            _tip.Show(SpecialText(index + 10), this, e.X + 16, e.Y + 20);
         }
     }
 
@@ -138,7 +145,7 @@ internal sealed class BoardView : Control
 
     private void HideTip()
     {
-        if (_tipChoice < 0) return;
+        if (_tipChoice == -1) return;
         _tip.Hide(this);
         _tipChoice = -1;
     }
@@ -172,7 +179,8 @@ internal sealed class BoardView : Control
                     g.FillRectangle(bg, r);
 
                 int value = _board[x, y];
-                if (value == Board.Circle) DrawPlanet(g, r);
+                if (Board.IsSpecial(value)) DrawSpecial(g, r, value, letterFont);
+                else if (value == Board.Circle) DrawPlanet(g, r);
                 else if (value == Board.Diamond) DrawStar(g, r);
                 else if (value >= Board.FirstCompany) DrawCompany(g, r, Board.CompanyOf(value), letterFont);
             }
@@ -214,6 +222,48 @@ internal sealed class BoardView : Control
         };
         g.FillEllipse(brush, body);
     }
+
+    /// <summary>S11: a nebula (purple cloud), a black hole (dark disc with a glowing rim) or a wormhole end (cyan swirl).</summary>
+    private static void DrawSpecial(Graphics g, RectangleF r, int value, Font font)
+    {
+        var body = RectangleF.Inflate(r, -r.Width * 0.12f, -r.Height * 0.12f);
+        if (value == Board.Nebula)
+        {
+            var cloud = RectangleF.Inflate(r, -1f, -1f);
+            using var path = new GraphicsPath();
+            path.AddEllipse(cloud);
+            using var brush = new PathGradientBrush(path) { CenterColor = Color.FromArgb(255, 245, 190, 255), SurroundColors = [Color.FromArgb(150, 120, 40, 200)] };
+            g.FillEllipse(brush, cloud);
+            using var dots = new SolidBrush(Color.FromArgb(220, 255, 255, 255));
+            foreach (var (dx, dy) in new[] { (0.3f, 0.35f), (0.62f, 0.3f), (0.45f, 0.62f), (0.7f, 0.66f) })
+                g.FillEllipse(dots, r.X + r.Width * dx - 1.5f, r.Y + r.Height * dy - 1.5f, 3f, 3f);
+        }
+        else if (value == Board.BlackHole)
+        {
+            using var rim = new Pen(Color.FromArgb(230, 255, 140, 40), Math.Max(2f, r.Width / 10f));
+            g.FillEllipse(Brushes.Black, body);
+            g.DrawEllipse(rim, body);
+        }
+        else
+        {
+            using var pen = new Pen(Color.Cyan, Math.Max(1.5f, r.Width / 14f));
+            for (int i = 0; i < 3; i++)
+            {
+                var ring = RectangleF.Inflate(body, -i * r.Width * 0.11f, -i * r.Height * 0.11f);
+                if (ring.Width > 2) g.DrawArc(pen, ring, i * 70, 270);
+            }
+            using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+            g.DrawString("W", font, Brushes.White, r, format);
+        }
+    }
+
+    private static string SpecialText(int value) => value switch
+    {
+        Board.Nebula => "Nebula: a company square next to it gets double the planet bonus.",
+        Board.BlackHole => "Black hole: squares next to it can't be played.",
+        Board.Wormhole => "Wormhole: its two ends count as next to each other, so companies can grow and merge through it.",
+        _ => "",
+    };
 
     private static void DrawStar(Graphics g, RectangleF r)
     {

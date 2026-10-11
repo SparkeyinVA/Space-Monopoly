@@ -288,6 +288,8 @@ internal sealed class MainForm : Form
         var board = new Board(spec.Width, spec.Height);
         _boardPlanetOdds = PlanetOddsFor(_settings.LastGameType);
         board.Randomise(_rng, _boardPlanetOdds);
+        // S11: Modern's special squares, on the medium and large grids.
+        if (_settings.LastGameType == GameType.Modern && size != GridSize.Small) board.PlaceSpecials(_rng);
         return board;
     }
 

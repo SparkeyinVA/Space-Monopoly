@@ -198,8 +198,9 @@ public sealed partial class Game
     private bool CanOffer(Pos p, bool canFound)
     {
         if (Board[p] != Board.Empty) return false;
-        if (canFound) return true;
         var s = Board.Survey(p);
+        if (s.NearBlackHole) return false;   // S11
+        if (canFound) return true;
         return !(s.NextToCircleOrDiamond && s.Companies.Count == 0);
     }
 
@@ -478,11 +479,12 @@ public sealed partial class Game
         board[p] = cell;
         RecordClaim(p);
         long value = SquareValue;
+        long circleBonus = board.Survey(p).NearNebula ? 2 * CircleBonus : CircleBonus;   // S11: a nebula doubles it
         foreach (var n in board.Neighbours(p))
         {
             if (board[n] == Board.Circle)
             {
-                value += CircleBonus;
+                value += circleBonus;
             }
             else if (board[n] == Board.Diamond)
             {

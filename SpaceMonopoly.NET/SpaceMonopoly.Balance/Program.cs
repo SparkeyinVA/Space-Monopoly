@@ -14,6 +14,7 @@ using SpaceMonopoly.Core.Ai;
 // --chaos Calm|Standard|Wild|None (Modern events, default Standard)   --games N (default 200)   --seed N (first seed, default 1)
 
 var options = Options.Parse(args);
+Simulator.Specials = !args.Contains("--specials") || !args.SkipWhile(a => a != "--specials").Skip(1).FirstOrDefault()?.Equals("no", StringComparison.OrdinalIgnoreCase) == true;
 if (options.Personalities)
 {
     PersonalityReport.Run(options.Classic ? GameType.Classic : GameType.Modern, options.Games, options.Seed, options.Chaos);
@@ -92,6 +93,9 @@ internal sealed record GameResult(
 
 internal static class Simulator
 {
+    /// <summary>Whether Modern boards get the S11 special squares (off with --specials no).</summary>
+    public static bool Specials { get; set; } = true;
+
     public static List<GameResult> Run(GameType type, GridSize size, AiLevel[] levels, int games, int firstSeed, Chaos chaos)
     {
         var results = new GameResult[games];
@@ -103,7 +107,9 @@ internal static class Simulator
     {
         var spec = GridSpec.For(size);
         var board = new Board(spec.Width, spec.Height);
-        board.Randomise(new Random(seed), type == GameType.Modern ? ModernRules.PlanetOdds : Board.CircleOdds);
+        var boardRng = new Random(seed);
+        board.Randomise(boardRng, type == GameType.Modern ? ModernRules.PlanetOdds : Board.CircleOdds);
+        if (type == GameType.Modern && size != GridSize.Small && Specials) board.PlaceSpecials(boardRng);
 
         // Rotate the seats so no level always goes first.
         var seats = levels.Select((l, i) => levels[(i + seed) % levels.Length]).ToArray();
