@@ -58,6 +58,22 @@ public sealed partial class Game
     private int[] _mergersMade = [];
     private bool _finished;
 
+    // Modern: every purchase with its round, so late buying can be left out of the final payout ranking (F7).
+    private List<(int Player, int Company, int Round, BigInteger Quantity)> _purchases = [];
+
+    private void RecordPurchase(int company, BigInteger quantity) => _purchases.Add((CurrentPlayerIndex, company, Turn, quantity));
+
+    /// <summary>True in the last rounds, when shares bought no longer count towards the final payout ranking (F7).</summary>
+    public bool LateBuying => IsModern && Turn >= Rounds - ModernRules.LateBuyRounds;
+
+    /// <summary>A player's shares in a company for the final payout ranking: without those bought in the last rounds.</summary>
+    public BigInteger SharesForFinalRanking(int player, int company)
+    {
+        var late = _purchases.Where(b => b.Player == player && b.Company == company && b.Round >= Rounds - ModernRules.LateBuyRounds)
+            .Aggregate(BigInteger.Zero, (sum, b) => sum + b.Quantity);
+        return BigInteger.Max(0, _players[player].Shares[company] - late);
+    }
+
     /// <summary>What happened when the game ended: final payouts and secret goals (Modern). Empty before then.</summary>
     public IReadOnlyList<GameEvent> GameEndEvents { get; private set; } = [];
 
@@ -102,6 +118,7 @@ public sealed partial class Game
         _founders = (int[])other._founders.Clone();
         _mergersMade = (int[])other._mergersMade.Clone();
         _finished = other._finished;
+        _purchases = [.. other._purchases];
         GameEndEvents = other.GameEndEvents;
     }
 
@@ -126,10 +143,11 @@ public sealed partial class Game
         var events = new List<GameEvent>();
         var live = Companies.Where(c => c.Exists).ToList();
 
-        // Final payouts: every company still in play pays its two largest holders, as at a merger.
-        foreach (var c in live)
+        // Final payouts (F7): companies of 4+ squares pay their two largest holders half the merger bonus. Shares bought
+        // in the last two rounds don't count, and a sole qualifying holder gets the first bonus only.
+        foreach (var c in live.Where(c => Board.CompanySize(c.Index) >= ModernRules.FinalPayoutMinSquares))
         {
-            var bonuses = MajorityBonuses(Enumerable.Range(0, _players.Length).Select(i => (i, _players[i].Shares[c.Index])), c.Value);
+            var bonuses = FinalPayouts(Enumerable.Range(0, _players.Length).Select(i => (i, SharesForFinalRanking(i, c.Index))), c.Value);
             if (bonuses.Count == 0) continue;
             foreach (var (player, amount) in bonuses) _players[player].Money += amount;
             events.Add(new FinalPayoutEvent(c.Index, c.Value, bonuses.Select(b => new Payout(b.Key, b.Value)).ToList()));

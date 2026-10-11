@@ -107,8 +107,30 @@ internal static class Heuristics
         var c = game.Companies[company];
         if (!game.IsModern || !c.Exists || shares < ModernRules.MinSharesForBonus) return 0;
         var holdings = Enumerable.Range(0, game.Players.Count)
-            .Select(i => (i, i == player ? shares : game.Players[i].Shares[company]));
-        return (double)Game.MajorityBonuses(holdings, c.Value).GetValueOrDefault(player);
+            .Select(i => (i, i == player ? shares : game.Players[i].Shares[company])).ToList();
+        double merger = (double)Game.MajorityBonuses(holdings, c.Value).GetValueOrDefault(player);
+
+        // At the end only companies of 4+ squares pay, at half the merger bonus, and late buying doesn't count (F7).
+        double final = 0;
+        if (game.Board.CompanySize(company) >= ModernRules.FinalPayoutMinSquares - 1 && !game.LateBuying)
+            final = (double)Game.FinalPayouts(holdings, c.Value).GetValueOrDefault(player);
+
+        double absorbed = MayBeAbsorbed(game, company) ? 0.5 : 0.1;
+        return absorbed * merger + (1 - absorbed) * final;
+    }
+
+    /// <summary>True if an empty square joins this company to one at least as big, so it could be taken over.</summary>
+    private static bool MayBeAbsorbed(Game game, int company)
+    {
+        var board = game.Board;
+        int size = board.CompanySize(company);
+        foreach (var p in board.AllPositions())
+        {
+            if (board[p] != Board.Empty) continue;
+            var s = board.Survey(p);
+            if (s.Companies.Contains(company) && s.Companies.Any(o => o != company && board.CompanySize(o) >= size)) return true;
+        }
+        return false;
     }
 
     /// <summary>Modern: the majority bonuses a player's current holdings are on course to collect.</summary>

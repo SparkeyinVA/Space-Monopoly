@@ -76,6 +76,9 @@ internal sealed record GameResult(
     int Turns,
     int DeadTurns,
     int NothingForYouTurns,
+    int LastPlaceTurns,
+    int LastPlaceNothingForYou,
+    double FinalPayoutShare,
     int Mergers,
     int MergersWithoutBonus,
     double CashShareSum,
@@ -103,7 +106,7 @@ internal static class Simulator
         var game = new Game(spec, board, seats.Select((l, i) => ($"{l} {i + 1}", ToKind(l))), type, new GameRules { Chaos = chaos }, seed);
         var ais = seats.Select((l, i) => new RuleBasedAi(l, seed * 31 + i)).ToArray();
 
-        int turns = 0, dead = 0, nothingForYou = 0, mergers = 0, unpaid = 0, leadChanges = 0, leader = -1, lastAtHalfway = -1;
+        int turns = 0, dead = 0, nothingForYou = 0, lastTurns = 0, lastNothing = 0, mergers = 0, unpaid = 0, leadChanges = 0, leader = -1, lastAtHalfway = -1;
         double cashShare = 0;
         int cashCount = 0;
         int halfway = Math.Max(1, game.GoesPerPlayer / 2);
@@ -114,7 +117,14 @@ internal static class Simulator
             // Both are measured at the start of the turn, before any swap or prospect.
             var previews = MovePreview.ForChoices(game);
             if (previews.All(m => m.Kind == MoveKind.Star)) dead++;
-            if (previews.All(m => m.NetWorthChange[game.CurrentPlayerIndex] <= 0)) nothingForYou++;
+            bool helpsNothing = previews.All(m => m.NetWorthChange[game.CurrentPlayerIndex] <= 0);
+            if (helpsNothing) nothingForYou++;
+            var worthNow = game.NetWorth(game.CurrentPlayerIndex);
+            if (game.Players.Count > 1 && Enumerable.Range(0, game.Players.Count).All(i => i == game.CurrentPlayerIndex || game.NetWorth(i) > worthNow))
+            {
+                lastTurns++;
+                if (helpsNothing) lastNothing++;
+            }
 
             var ai = ais[game.CurrentPlayerIndex];
             foreach (var merger in game.PlaceSquare(ai.ChooseSquare(game)).OfType<MergerEvent>())
@@ -143,7 +153,11 @@ internal static class Simulator
         }
 
         var final = Enumerable.Range(0, game.Players.Count).Select(game.NetWorth).ToArray();
-        return new GameResult(seats, final, Leader(game), lastAtHalfway, turns, dead, nothingForYou, mergers, unpaid, cashShare, cashCount, leadChanges,
+        int winner = Leader(game);
+        var winnerPayout = game.GameEndEvents.OfType<FinalPayoutEvent>().SelectMany(f => f.Payouts).Where(p => p.Player == winner)
+            .Aggregate(BigInteger.Zero, (sum, p) => sum + p.Amount);
+        double payoutShare = final[winner] > 0 ? (double)winnerPayout / (double)final[winner] : 0;
+        return new GameResult(seats, final, winner, lastAtHalfway, turns, dead, nothingForYou, lastTurns, lastNothing, payoutShare, mergers, unpaid, cashShare, cashCount, leadChanges,
             game.NoMoreCompanies && game.Turn < game.GoesPerPlayer);
     }
 
@@ -181,6 +195,9 @@ internal static class Report
 
         Row("Turns with no useful square", Percent(results.Sum(r => r.DeadTurns), turns), "under 2%");
         Row("Turns where no square helps you", Percent(results.Sum(r => r.NothingForYouTurns), turns), "");
+        Row("  ...for a player alone in last place", Percent(results.Sum(r => r.LastPlaceNothingForYou), results.Sum(r => r.LastPlaceTurns)), "clearly lower");
+        if (results.Any(r => r.FinalPayoutShare > 0))
+            Row("Final payouts as a share of the winner's score", Percent(results.Sum(r => r.FinalPayoutShare), results.Count), "under about 25%");
         Row("Mergers per game; share with no bonus paid", $"{(double)results.Sum(r => r.Mergers) / results.Count:0.0}; " +
             Percent(results.Sum(r => r.MergersWithoutBonus), results.Sum(r => r.Mergers)), "");
         if (ratios.Count > 0)

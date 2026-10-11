@@ -32,7 +32,7 @@ public sealed class RuleBasedAi : IAiPlayer
     public Personality Personality { get; }
 
     /// <summary>Normal: how often it plays its second-best square instead of its best (S9). Adaptive difficulty moves it.</summary>
-    public double SecondBestChance { get; set; } = 0.3;
+    public double SecondBestChance { get; set; } = 0.1;
 
     public string? LastComment => null;
 
@@ -183,6 +183,7 @@ public sealed class RuleBasedAi : IAiPlayer
         int top = ranked.Count > 0 ? ranked[0] : -1;
         var cash = me.Money;
         int self = game.CurrentPlayerIndex;
+        var held = me.Shares.ToArray();   // what we'll hold once this turn's sales are done
 
         if (sellThreshold is double threshold)
         {
@@ -195,6 +196,7 @@ public sealed class RuleBasedAi : IAiPlayer
                 {
                     orders.Add(new TradeOrder(TradeAction.Sell, c, 0));
                     cash += me.Shares[c] * game.Companies[c].Value;
+                    held[c] = 0;
                 }
             }
         }
@@ -211,7 +213,7 @@ public sealed class RuleBasedAi : IAiPlayer
         }
 
         // Modern: first buy into majorities (F4), where a stake earns a bonus worth more than buying for growth.
-        if (game.IsModern) BuyStakes(game, ratio, orders, ref cash, ref allowance, _profile.BonusWeight);
+        if (game.IsModern) BuyStakes(game, ratio, orders, held, ref cash, ref allowance, _profile.BonusWeight);
 
         foreach (int c in ranked)
         {
@@ -232,10 +234,10 @@ public sealed class RuleBasedAi : IAiPlayer
     /// Modern: buys the stakes that raise the player's majority bonuses the most for the money, as long as each
     /// beats the interest cash would earn. Tries reaching the 10-share minimum and overtaking or tying each rival.
     /// </summary>
-    private static void BuyStakes(Game game, double[] ratio, List<TradeOrder> orders, ref BigInteger cash, ref BigInteger allowance, double bonusWeight)
+    private static void BuyStakes(Game game, double[] ratio, List<TradeOrder> orders, BigInteger[] held,
+        ref BigInteger cash, ref BigInteger allowance, double bonusWeight)
     {
         int me = game.CurrentPlayerIndex;
-        var held = game.CurrentPlayer.Shares.ToArray();
         double interest = Heuristics.InterestReturn(game, me);
 
         for (int round = 0; round < 4 && allowance != 0; round++)

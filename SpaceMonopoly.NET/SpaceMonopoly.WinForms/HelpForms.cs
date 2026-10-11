@@ -46,7 +46,7 @@ internal static class HelpForms
           • Each company has 1,000 shares, shared by all players. The company buttons show how many are left. Shares never split in a Modern game.
           • In a merger, the bigger company's share price rises by half the smaller company's price. Shares in the company taken over are bought back at its share price; you don't get shares in the bigger company. Its largest shareholder gets a bonus of 10 times its share price, and the second-largest 5 times. You need at least 10 shares to qualify for a bonus. Players tied for largest share both bonuses; players tied for second share the second bonus.
           • Catching up: while you're alone in last place you hold 5 squares instead of 4.
-          • At the end of the game, every company still in play pays its two largest shareholders (with at least 10 shares) 10 and 5 times its share price, just like a merger.
+          • At the end of the game, every company of 4 or more squares pays its two largest shareholders (with at least 10 shares) 5 and 2.5 times its share price: half a merger bonus. A sole qualifying holder gets only the first. Shares bought in the last 2 rounds don't count for this ranking.
           • Each player is dealt a secret goal at the start (yours is shown in the side panel), worth 4,000-20,000 if you meet it. All goals are revealed at the end.
           • Modern scores have their own high score tables.
 

@@ -255,34 +255,6 @@ public class ModernTests
     }
 
     [Fact]
-    public void Companies_pay_their_two_largest_holders_at_the_end()
-    {
-        var game = NewModern(players: 3, circles: new Pos(5, 4));
-        Play(game, new Pos(5, 5));                       // P0 founds A at 600 with 3 shares
-        game.Buy(0, 9);                                  // P0: 12
-        game.EndTurn();
-        game.PlaceSquare(game.Choices[0]);
-        game.Buy(0, 10);                                 // P1: 10
-        game.EndTurn();
-        game.PlaceSquare(game.Choices[0]);
-        game.Buy(0, 5);                                  // P2: 5, too few to qualify
-        long price = game.Companies[0].Value;
-        var before = game.Players.Select(p => p.Money).ToArray();
-
-        game.EndNow();
-        var payout = Assert.Single(game.GameEndEvents.OfType<FinalPayoutEvent>());
-        Assert.Equal(0, payout.Company);
-        var goals = game.GameEndEvents.OfType<SecretGoalEvent>().ToDictionary(g => g.Player, g => g.Reward);
-        Assert.Equal(before[0] + 10 * price + goals[0], game.Players[0].Money);
-        Assert.Equal(before[1] + 5 * price + goals[1], game.Players[1].Money);
-        Assert.Equal(before[2] + goals[2], game.Players[2].Money);
-
-        var paidAgain = game.Players.Select(p => p.Money).ToArray();
-        game.EndNow();                                   // paid once only
-        Assert.Equal(paidAgain, game.Players.Select(p => p.Money).ToArray());
-    }
-
-    [Fact]
     public void Every_player_gets_a_different_secret_goal_while_there_are_enough()
     {
         var game = NewModern(players: 6);
@@ -303,18 +275,103 @@ public class ModernTests
         if (goal.Goal == SecretGoal.Founder) Assert.Equal(2 * SecretGoals.FounderRewardEach, goal.Reward);
     }
 
+    /// <summary>A game where P0 founded A (3 shares) and A has grown to <paramref name="squares"/> squares; it's then P0's turn to trade.</summary>
+    private static Game WithCompanyOf(int squares, int players = 3)
+    {
+        var game = NewModern(players, circles: new Pos(5, 4));
+        Play(game, new Pos(5, 5));
+        for (int x = 6; x < 5 + squares; x++)
+        {
+            game.EndTurn();
+            Play(game, new Pos(x, 5));
+        }
+        while (game.CurrentPlayerIndex != 0)
+        {
+            game.EndTurn();
+            game.PlaceSquare(game.Choices[0]);
+        }
+        return game;
+    }
+
+    private static void Hold(Game game, int player, int shares) => game.Players[player].Shares[0] = shares;
+
+    [Fact]
+    public void Companies_of_four_squares_pay_half_bonuses_to_their_two_largest_holders_at_the_end()
+    {
+        var game = WithCompanyOf(4);
+        Hold(game, 0, 12);
+        Hold(game, 1, 10);
+        Hold(game, 2, 5);                                // too few to qualify
+        long price = game.Companies[0].Value;
+        var before = game.Players.Select(p => p.Money).ToArray();
+
+        game.EndNow();
+        var payout = Assert.Single(game.GameEndEvents.OfType<FinalPayoutEvent>());
+        Assert.Equal(0, payout.Company);
+        var goals = game.GameEndEvents.OfType<SecretGoalEvent>().ToDictionary(g => g.Player, g => g.Reward);
+        Assert.Equal(before[0] + 5 * price + goals[0], game.Players[0].Money);
+        Assert.Equal(before[1] + 5 * price / 2 + goals[1], game.Players[1].Money);
+        Assert.Equal(before[2] + goals[2], game.Players[2].Money);
+
+        var paidAgain = game.Players.Select(p => p.Money).ToArray();
+        game.EndNow();                                   // paid once only
+        Assert.Equal(paidAgain, game.Players.Select(p => p.Money).ToArray());
+    }
+
+    [Fact]
+    public void Small_companies_pay_no_final_payout()
+    {
+        var game = WithCompanyOf(3);
+        Hold(game, 0, 12);
+        game.EndNow();
+        Assert.Empty(game.GameEndEvents.OfType<FinalPayoutEvent>());
+    }
+
+    [Fact]
+    public void A_sole_holder_gets_only_the_first_final_payout()
+    {
+        var game = WithCompanyOf(4);
+        Hold(game, 0, 10);
+        long price = game.Companies[0].Value;
+        game.EndNow();
+        var payout = Assert.Single(game.GameEndEvents.OfType<FinalPayoutEvent>());
+        Assert.Equal(new BigInteger(5 * price), Assert.Single(payout.Payouts).Amount);
+    }
+
+    [Fact]
+    public void Shares_bought_in_the_last_two_rounds_do_not_count_for_the_final_ranking()
+    {
+        var game = WithCompanyOf(4, players: 2);
+        Hold(game, 1, 12);
+        while (!game.LateBuying || game.CurrentPlayerIndex != 0)
+        {
+            if (game.Phase == GamePhase.ChoosingSquare) game.PlaceSquare(game.Choices[0]);
+            game.EndTurn();
+        }
+        game.PlaceSquare(game.Choices[0]);
+        game.CurrentPlayer.Money = 100_000;
+        game.Buy(0, 20);                                 // 23 shares, but only 3 count
+        Assert.Equal(3, game.SharesForFinalRanking(0, 0));
+        game.EndNow();
+        var payout = Assert.Single(game.GameEndEvents.OfType<FinalPayoutEvent>());
+        Assert.Equal(1, Assert.Single(payout.Payouts).Player);
+    }
+
     [Fact]
     public void Hard_buys_enough_to_take_first_place()
     {
-        var game = NewModern(players: 2, circles: new Pos(5, 4));
-        Play(game, new Pos(5, 5));                       // P0 founds A with 3 shares
-        game.EndTurn();
+        // Late in the game, when cash has few rounds of interest left to earn.
+        var game = WithCompanyOf(4, players: 2);
+        while (game.Turn < game.Rounds - ModernRules.LateBuyRounds - 2 || game.CurrentPlayerIndex != 0)
+        {
+            if (game.Phase == GamePhase.ChoosingSquare) game.PlaceSquare(game.Choices[0]);
+            game.EndTurn();
+        }
         game.PlaceSquare(game.Choices[0]);
-        game.Buy(0, 9);                                  // P1 holds 9
-        game.EndTurn();
-        game.Players[1].Shares[0] = 12;                  // and more, from earlier trades
-        game.PlaceSquare(game.Choices[0]);
-        game.CurrentPlayer.Money = 20_000;
+        Assert.True(game.Companies[0].Exists && game.Board.CompanySize(0) >= ModernRules.FinalPayoutMinSquares);
+        Hold(game, 0, 3);
+        Hold(game, 1, 12);
+        game.CurrentPlayer.Money = 50 * game.Companies[0].Value;
 
         TradeExecutor.Apply(game, new RuleBasedAi(AiLevel.Hard, 1).PlanTrades(game));
         Assert.True(game.Players[0].Shares[0] > game.Players[1].Shares[0],
@@ -369,5 +426,22 @@ public class ModernTests
         var average = (game.NetWorth(0) + game.NetWorth(1)) / 2;
         Assert.Equal(average / 10 / 100 * 100, amount);
         Assert.Contains("about", game.DescribeEvent(EventCard.GalacticGrant));
+    }
+
+    [Fact]
+    public void The_extra_square_for_last_place_helps_that_player()
+    {
+        var game = WithCompanyOf(4, players: 2);
+        Hold(game, 1, 12);                               // P1 holds a stake in A...
+        game.Players[1].Money = 0;                       // ...but is alone in last place
+        game.Players[0].Money = 1_000_000;
+        game.EndTurn();
+
+        var hand = game.HandOf(1);
+        Assert.Equal(ModernRules.HandSize + 1, hand.Count);
+        var extra = hand[^1];
+        var around = game.Board.Survey(extra);
+        Assert.True(around.Companies.Contains(0) || (around.Companies.Count == 0 && around.NextToCircleOrDiamond),
+            $"The extra square {extra} doesn't help: next to companies [{string.Join(",", around.Companies)}]");
     }
 }

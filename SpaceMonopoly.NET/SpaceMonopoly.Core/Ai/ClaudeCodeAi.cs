@@ -53,8 +53,10 @@ public sealed class ClaudeCodeAi : IAiPlayer
             sb.AppendLine($"- Shares never split. Each company has {ModernRules.SharesPerCompany:N0} shares shared by all players.");
             sb.AppendLine($"- After playing a square you may buy up to {ModernRules.BuyLimitPerTurn} shares this turn (across all companies) and sell any number.");
             sb.AppendLine($"- Cash earns {ModernRules.InterestPercent}% interest at the start of each of your turns.");
-            sb.AppendLine($"- At the end of the game every company still in play pays its two largest holders {ModernRules.LargestHolderBonus}x and " +
-                          $"{ModernRules.SecondHolderBonus}x its share price, with the same minimum and tie rules as a merger.");
+            sb.AppendLine($"- At the end of the game every company of {ModernRules.FinalPayoutMinSquares} or more squares pays its two largest holders " +
+                          $"{(double)ModernRules.LargestHolderBonus / ModernRules.FinalPayoutDivisor}x and {(double)ModernRules.SecondHolderBonus / ModernRules.FinalPayoutDivisor}x " +
+                          $"its share price (same {ModernRules.MinSharesForBonus}-share minimum; a sole holder gets only the first). " +
+                          $"Shares bought in the last {ModernRules.LateBuyRounds} rounds don't count for this ranking.");
             sb.AppendLine("- From round 3 an event card is played at the start of each round; the next round's card is always announced in advance.");
             sb.AppendLine("- Each player has a secret goal worth a cash reward at the end.");
             sb.AppendLine("- Once per turn, before playing, you may swap one square in your hand for a new one. Once per game you may prospect: replace your whole hand.");

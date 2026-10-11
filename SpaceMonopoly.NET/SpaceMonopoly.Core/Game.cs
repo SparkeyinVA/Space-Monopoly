@@ -259,6 +259,14 @@ public sealed partial class Game
         _choices = [.. _hands[CurrentPlayerIndex]];
     }
 
+    /// <summary>True if the square would grow or merge a company the player holds a qualifying stake in, or found a company.</summary>
+    private bool HelpsPlayer(int player, Pos p, bool canFound)
+    {
+        var s = Board.Survey(p);
+        if (s.Companies.Count == 0) return canFound && s.NextToCircleOrDiamond;
+        return s.Companies.Any(c => _players[player].Shares[c] >= ModernRules.MinSharesForBonus);
+    }
+
     /// <summary>True if playing the square would found, grow or merge a company (rather than only place a star).</summary>
     private bool IsLive(Pos p)
     {
@@ -308,10 +316,13 @@ public sealed partial class Game
         if (pool.Count == 0) pool = open;
         for (int i = 0; i < missing && pool.Count > 0; i++)
         {
-            int j = _rng.Next(pool.Count);
-            hand.Add(pool[j]);
-            pool[j] = pool[^1];
-            pool.RemoveAt(pool.Count - 1);
+            // The extra square for last place (S7) comes from squares that help this player (F8), if there are any.
+            var from = pool;
+            if (hand.Count >= ModernRules.HandSize && pool.Where(p => HelpsPlayer(player, p, canFound)).ToList() is { Count: > 0 } helpful)
+                from = helpful;
+            var pick = from[_rng.Next(from.Count)];
+            hand.Add(pick);
+            pool.Remove(pick);
         }
     }
 
@@ -545,16 +556,32 @@ public sealed partial class Game
     /// bonuses evenly; players tied for second share the second bonus. A sole holder gets both.
     /// Only holders of at least <see cref="ModernRules.MinSharesForBonus"/> shares qualify.
     /// </summary>
-    internal static Dictionary<int, BigInteger> MajorityBonuses(IEnumerable<(int Player, BigInteger Shares)> holdings, long price)
+    internal static Dictionary<int, BigInteger> MajorityBonuses(IEnumerable<(int Player, BigInteger Shares)> holdings, long price) =>
+        MajorityBonuses(holdings, price, divisor: 1, soleHolderGetsBoth: true);
+
+    /// <summary>
+    /// The end-of-game payout (F7): half the merger bonus, and a sole qualifying holder gets the first bonus only.
+    /// The caller leaves out companies that are too small and shares bought too late.
+    /// </summary>
+    internal static Dictionary<int, BigInteger> FinalPayouts(IEnumerable<(int Player, BigInteger Shares)> holdings, long price) =>
+        MajorityBonuses(holdings, price, ModernRules.FinalPayoutDivisor, soleHolderGetsBoth: false);
+
+    private static Dictionary<int, BigInteger> MajorityBonuses(IEnumerable<(int Player, BigInteger Shares)> holdings, long price,
+        int divisor, bool soleHolderGetsBoth)
     {
         var result = new Dictionary<int, BigInteger>();
         var holders = holdings.Where(h => h.Shares >= ModernRules.MinSharesForBonus).OrderByDescending(h => h.Shares).ToList();
         if (holders.Count == 0) return result;
 
-        BigInteger first = ModernRules.LargestHolderBonus * price, second = ModernRules.SecondHolderBonus * price;
+        BigInteger first = ModernRules.LargestHolderBonus * price / divisor, second = ModernRules.SecondHolderBonus * price / divisor;
         var top = holders.Where(h => h.Shares == holders[0].Shares).ToList();
         var rest = holders.Skip(top.Count).ToList();
 
+        if (top.Count == 1 && rest.Count == 0 && !soleHolderGetsBoth)
+        {
+            result[top[0].Player] = first;
+            return result;
+        }
         if (top.Count > 1 || rest.Count == 0)
         {
             foreach (var h in top) result[h.Player] = (first + second) / top.Count;
@@ -641,6 +668,7 @@ public sealed partial class Game
         CurrentPlayer.Shares[company] += quantity;
         CurrentPlayer.Money -= quantity * price;
         _boughtThisTurn += quantity;
+        if (IsModern) RecordPurchase(company, quantity);
         return new TradeEvent(CurrentPlayerIndex, company, quantity, price, IsBuy: true);
     }
 

@@ -33,6 +33,15 @@ public static class ModernRules
     /// <summary>Only players holding at least this many shares of the company taken over qualify for a bonus (F3).</summary>
     public const int MinSharesForBonus = 10;
 
+    /// <summary>The end-of-game payout is the merger bonus divided by this: 5x and 2.5x the share price (F7).</summary>
+    public const int FinalPayoutDivisor = 2;
+
+    /// <summary>Only companies of at least this many squares pay a final payout (F7).</summary>
+    public const int FinalPayoutMinSquares = 4;
+
+    /// <summary>Shares bought in this many last rounds don't count when ranking holders for the final payout (F7).</summary>
+    public const int LateBuyRounds = 2;
+
     /// <summary>At a merger, the survivor's share price rises by the absorbed price divided by this (Classic: 1, the whole price).</summary>
     public const int MergerPriceDivisor = 2;
 

@@ -671,6 +671,8 @@ internal sealed class MainForm : Form
             // A human sees their own secret goal on their turn.
             if (inProgress && player.IsHuman && game.GoalOf(game.CurrentPlayerIndex) is SecretGoal goal)
                 _kindLabel.Text += Environment.NewLine + "Your secret goal: " + SecretGoals.Description(goal);
+            if (inProgress && player.IsHuman && game.LateBuying)
+                _kindLabel.Text += Environment.NewLine + $"Last {ModernRules.LateBuyRounds} rounds: shares you buy now don't count for the final payout ranking.";
             if (inProgress && player.IsHuman && game.IsModern && game.HandOf(game.CurrentPlayerIndex).Count > ModernRules.HandSize)
                 _kindLabel.Text += Environment.NewLine + "You're in last place, so you hold an extra square.";
             string Card(EventCard card) => EventCards.Title(card) + (card == EventCard.QuietQuarter ? "" : " — " + game.DescribeEvent(card));
