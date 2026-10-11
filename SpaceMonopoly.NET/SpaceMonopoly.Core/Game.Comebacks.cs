@@ -138,8 +138,13 @@ public sealed partial class Game
         Phase = GamePhase.Over;
         _choices = [];
         _offers = [];   // conversions are for mergers during the game only
-        if (!IsModern || _finished) return;
+        if (_finished) return;
         _finished = true;
+        if (!IsModern)
+        {
+            RecordRound();
+            return;
+        }
 
         var events = new List<GameEvent>();
         var live = Companies.Where(c => c.Exists).ToList();
@@ -162,6 +167,7 @@ public sealed partial class Game
             events.Add(new SecretGoalEvent(i, _goals[i], rewards[i]));
         }
         GameEndEvents = events;
+        RecordRound();   // the final net worths, after payouts and goals
     }
 
     private BigInteger LargestHolders(Company c)

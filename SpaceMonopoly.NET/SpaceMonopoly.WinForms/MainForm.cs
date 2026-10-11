@@ -55,6 +55,7 @@ internal sealed class MainForm : Form
     private readonly Button _endTurn;
     private readonly FlowLayoutPanel _info = new() { FlowDirection = FlowDirection.TopDown, AutoSize = true, Dock = DockStyle.Fill, WrapContents = false };
     private readonly Button _market;
+    private readonly ToolStripMenuItem _daily;
     private readonly ToolStripMenuItem _fast;
     private const int FastDelayMs = 150;
 
@@ -112,7 +113,8 @@ internal sealed class MainForm : Form
         _endGame = new ToolStripMenuItem("&End Game", null, (_, _) => EndGameEarly());
         var scores = new ToolStripMenuItem("View &High Scores", null, (_, _) => ShowHighScores([]));
         var quit = new ToolStripMenuItem("E&xit", null, (_, _) => Close());
-        var project = new ToolStripMenuItem("&Game", null, _newGame, _endGame, new ToolStripSeparator(), scores, new ToolStripSeparator(), quit);
+        _daily = new ToolStripMenuItem("&Daily Challenge", null, (_, _) => DailyChallenge());
+        var project = new ToolStripMenuItem("&Game", null, _newGame, _daily, _endGame, new ToolStripSeparator(), scores, new ToolStripSeparator(), quit);
 
         _newGrid = new ToolStripMenuItem("&Create New Grid", null, (_, _) => NewGrid(), Keys.F5);
         _sizeItems = Enum.GetValues<GridSize>()
@@ -125,7 +127,8 @@ internal sealed class MainForm : Form
 
         var howTo = new ToolStripMenuItem("&How to Play", null, (_, _) => HelpForms.ShowHowToPlay(this, _game?.Type ?? _settings.LastGameType, Currency), Keys.F1);
         var about = new ToolStripMenuItem("&About Space Monopoly", null, (_, _) => HelpForms.ShowAbout(this));
-        var help = new ToolStripMenuItem("&Help", null, howTo, about);
+        var achievementsItem = new ToolStripMenuItem("&Achievements", null, (_, _) => ShowAchievements());
+        var help = new ToolStripMenuItem("&Help", null, howTo, achievementsItem, about);
         menu.Items.AddRange([project, options, help]);
         MainMenuStrip = menu;
 
@@ -333,30 +336,67 @@ internal sealed class MainForm : Form
             _settings = _settings with { LastGameType = form.GameType, LastChaos = form.Chaos, AdaptiveDifficulty = form.Adaptive };
             _storage.SaveSettings(_settings);
         }
-        _adaptiveStep = form.Adaptive ? _settings.AdaptiveStep : null;
+        _dailyDate = null;
+        await StartGame(form.Players, form.GameType, form.Chaos, form.Advisor, form.Adaptive);
+    }
+
+    /// <summary>
+    /// The Daily Challenge (S10): a Modern game on the medium grid against a Hard Raider and a Normal Tycoon, with the
+    /// board, the squares dealt and the computer players all seeded from today's date, so every attempt today is the same game.
+    /// </summary>
+    private async void DailyChallenge()
+    {
+        if (InProgress) return;
+        var today = DateTime.Today;
+        string name = _lastPlayers.FirstOrDefault(p => p.Kind == PlayerKind.Human)?.Name ?? "You";
+        if (_settings.GridSize != GridSize.Medium)
+        {
+            _settings = _settings with { GridSize = GridSize.Medium };
+            _storage.SaveSettings(_settings);
+        }
+        _dailyDate = today;
+        await StartGame(
+            [new(name, PlayerKind.Human), new("Hard", PlayerKind.ComputerHard, Personality.Raider), new("Normal", PlayerKind.ComputerNormal, Personality.Tycoon)],
+            GameType.Modern, Chaos.Standard, advisor: false, adaptive: false, Replay.DailyBoard(today), Replay.DailySeed(today));
+        var best = _storage.LoadDailyBests().GetValueOrDefault(today.ToString("yyyy-MM-dd"));
+        Log($"Daily Challenge for {today:D}: everyone gets the same board, squares and opponents today." +
+            (best > 0 ? $" Your best today: {Currency.Format(best)}." : ""));
+    }
+
+    private DateTime? _dailyDate;
+
+    private async Task StartGame(IReadOnlyList<PlayerSetup> players, GameType type, Chaos chaos, bool advisor, bool adaptive,
+        Board? fixedBoard = null, int? seed = null)
+    {
+        _adaptiveStep = adaptive ? _settings.AdaptiveStep : null;
         var step = AdaptiveDifficulty.At(_settings.AdaptiveStep);
         // Adaptive difficulty: built-in computer players play at the current step (Claude players are unchanged).
-        var setups = form.Players.Select(p => form.Adaptive && p.Kind.IsComputer() && p.Kind != PlayerKind.Claude ? p with { Kind = step.Kind } : p).ToList();
+        var setups = players.Select(p => adaptive && p.Kind.IsComputer() && p.Kind != PlayerKind.Claude ? p with { Kind = step.Kind } : p).ToList();
         _log.Clear();
 
+        if (fixedBoard is not null)
+        {
+            _board = fixedBoard;
+            _boardPlanetOdds = PlanetOddsFor(type);
+        }
         // Modern boards have more planets. Switching between Modern and the 2001 rules draws a new grid.
-        if (_boardPlanetOdds != PlanetOddsFor(form.GameType))
+        else if (_boardPlanetOdds != PlanetOddsFor(type))
         {
             _board = NewBoard(_settings.GridSize);
-            Log(form.GameType == GameType.Modern
+            Log(type == GameType.Modern
                 ? "A new grid with more planets was drawn for the Modern game."
                 : "A new grid with the original number of planets was drawn for this game.");
         }
 
         // The game starts from the planets on the current grid; any companies left from the last game are cleared.
-        _game = new Game(Spec, _board, setups.Select(p => (p.Name, p.Kind)), form.GameType, _settings.Rules with { Chaos = form.Chaos });
+        _game = new Game(Spec, _board, setups.Select(p => (p.Name, p.Kind)), type, _settings.Rules with { Chaos = chaos }, seed);
         _personalities = setups.Select(p => p.Personality ?? Personalities.Random(_rng)).ToArray();
-        _advisorEnabled = form.Advisor;
+        _advisorEnabled = advisor;
         _advisorUses = new int[_game.Players.Count];
         _advisedSquare = null;
         _ais = _game.Players.Select((p, i) => !p.Kind.IsComputer() ? null
-            : _adaptiveStep is int s && p.Kind != PlayerKind.Claude ? AdaptiveDifficulty.CreatePlayer(s, personality: _personalities[i])
-            : AiFactory.Create(p.Kind, _settings.Claude, personality: _personalities[i])).ToArray();
+            : _adaptiveStep is int s && p.Kind != PlayerKind.Claude ? AdaptiveDifficulty.CreatePlayer(s, seed + i, _personalities[i])
+            : AiFactory.Create(p.Kind, _settings.Claude, seed + i, _personalities[i])).ToArray();
         _cts = new CancellationTokenSource();
 
         string who = string.Join(", ", _game.Players.Select((p, i) =>
@@ -371,12 +411,22 @@ internal sealed class MainForm : Form
                 $"no dividends. Buy up to {ModernRules.BuyLimitPerTurn} shares a turn; each company has {ModernRules.SharesPerCompany:N0}. " +
                 $"In a merger the two largest holders of the company taken over get {ModernRules.LargestHolderBonus}× and " +
                 $"{ModernRules.SecondHolderBonus}× its share price as a bonus. Cash earns {ModernRules.InterestPercent}% interest each turn. " +
-                $"Each round an event card is flipped, and the next one is shown in advance ({form.Chaos.ToString().ToLowerInvariant()} events).");
+                $"Each round an event card is flipped, and the next one is shown in advance ({chaos.ToString().ToLowerInvariant()} events).");
         if (_adaptiveStep is int current)
             Log($"Adaptive difficulty: computer players are at step {current + 1} of {AdaptiveDifficulty.Steps.Count} ({AdaptiveDifficulty.At(current).Label}).");
         ReportRoundStart(_game);
 
         await ContinueAsync();
+    }
+
+    private void ShowAchievements()
+    {
+        var earned = _storage.LoadAchievements();
+        var table = Ui.Table(("Achievement", 150), ("How to earn it", 330), ("Earned", 100));
+        foreach (var a in Replay.Achievements)
+            table.Items.Add(Ui.Row((earned.ContainsKey(a.Id) ? "⭐ " : "") + a.Title, a.Description,
+                earned.TryGetValue(a.Id, out var when) ? when.ToShortDateString() : ""));
+        Dialogs.Show(this, "Achievements", Color.Gold, [$"You have earned {earned.Count} of {Replay.Achievements.Count} achievements."], table);
     }
 
     private void EndGameEarly()
@@ -409,7 +459,41 @@ internal sealed class MainForm : Form
                 : $"Adaptive difficulty: {(humanWon ? "up" : "down")} to {AdaptiveDifficulty.At(next).Label} for the next game.");
         }
         foreach (var e in game.GameEndEvents) Log(EventText.Describe(game, e, Currency));
-        Dialogs.ShowGameOver(this, game, Currency);
+
+        var extras = new List<string>();
+        var achievements = _storage.LoadAchievements();
+        bool newAchievement = false;
+        for (int p = 0; p < game.Players.Count; p++)
+        {
+            if (!game.Players[p].IsHuman) continue;
+            foreach (var a in Replay.Earned(game, p, p < _advisorUses.Length ? _advisorUses[p] : 0, _dailyDate is not null))
+                if (achievements.TryAdd(a.Id, DateTime.Now))
+                {
+                    newAchievement = true;
+                    extras.Add($"⭐ New achievement for {game.Players[p].Name}: {a.Title} ({a.Description})");
+                }
+        }
+        if (newAchievement) _storage.SaveAchievements(achievements);
+
+        if (_dailyDate is DateTime day && game.Players.Select((pl, i) => (pl, i)).FirstOrDefault(t => t.pl.IsHuman) is { pl: not null } human)
+        {
+            var bests = _storage.LoadDailyBests();
+            string key = day.ToString("yyyy-MM-dd");
+            var worth = game.NetWorth(human.i);
+            if (worth > bests.GetValueOrDefault(key))
+            {
+                extras.Insert(0, $"📅 New personal best for today's Daily Challenge: {Currency.Format(worth)}!");
+                bests[key] = worth;
+                _storage.SaveDailyBests(bests);
+            }
+            else
+            {
+                extras.Insert(0, $"📅 Today's Daily Challenge best is still {Currency.Format(bests[key])}.");
+            }
+        }
+        foreach (var line in extras) Log(line);
+        using (var over = new GameOverForm(game, Currency, Replay.Awards(game, Currency), extras))
+            over.ShowDialog(this);
 
         var fresh = new List<(GridSize Size, bool Modern, int Index)>();
         foreach (var s in game.Standings())
@@ -935,6 +1019,7 @@ internal sealed class MainForm : Form
         bool inProgress = InProgress;
 
         _newGame.Enabled = !inProgress;
+        _daily.Enabled = !inProgress;
         _endGame.Enabled = inProgress;
         _newGrid.Enabled = !inProgress;
         _gridSize.Enabled = !inProgress;

@@ -127,6 +127,19 @@ public sealed class Storage(string folder)
 
     public void SaveHighScores(HighScoreTable table) => Save(ScoresPath, table);
 
+    private string AchievementsPath => Path.Combine(Folder, "achievements.json");
+    private string DailyPath => Path.Combine(Folder, "daily.json");
+
+    /// <summary>Achievements earned, by id, with the date each was first earned (S10).</summary>
+    public Dictionary<string, DateTime> LoadAchievements() => Load<Dictionary<string, DateTime>>(AchievementsPath) ?? [];
+
+    public void SaveAchievements(Dictionary<string, DateTime> earned) => Save(AchievementsPath, earned);
+
+    /// <summary>The personal best for each day's Daily Challenge, keyed by date (yyyy-MM-dd) (S10).</summary>
+    public Dictionary<string, BigInteger> LoadDailyBests() => Load<Dictionary<string, BigInteger>>(DailyPath) ?? [];
+
+    public void SaveDailyBests(Dictionary<string, BigInteger> bests) => Save(DailyPath, bests);
+
     private static T? Load<T>(string path) where T : class
     {
         try

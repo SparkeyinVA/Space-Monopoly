@@ -73,6 +73,7 @@ public sealed partial class Game
             InitEvents();
             InitComebacks();
         }
+        InitStats();
 
         BeginTurn();
     }
@@ -93,6 +94,7 @@ public sealed partial class Game
         CopyEvents(other);
         CopyComebacks(other);
         CopyConversions(other);
+        CopyStats(other);
         _rng = other._rng.Fork();
         CurrentPlayerIndex = other.CurrentPlayerIndex;
         Turn = other.Turn;
@@ -223,7 +225,11 @@ public sealed partial class Game
         SettleConversions(new Dictionary<int, BigInteger>());   // offers nobody answered are taken as cash
 
         CurrentPlayerIndex = (CurrentPlayerIndex + 1) % _players.Length;
-        if (CurrentPlayerIndex == 0) Turn++;
+        if (CurrentPlayerIndex == 0)
+        {
+            Turn++;
+            RecordRound();
+        }
         RoundStartEvents = [];
 
         if (Turn >= Rounds)
@@ -493,6 +499,7 @@ public sealed partial class Game
         var company = Companies.First(c => !c.Exists);
         company.Exists = true;
         RecordFounder(company.Index);
+        RecordFounding();
         company.Value = Claim(p, company.Index);
 
         foreach (int i in Recipients) _players[i].Shares[company.Index] = 0;
@@ -555,6 +562,7 @@ public sealed partial class Game
         events.Add(new MergerEvent(CurrentPlayerIndex, survivor, absorbed, absorbedValue, a.Value, rows));
         RedirectOffers(absorbed, survivor);
         OfferConversion(survivor, rows);
+        RecordMergerPayouts(survivor, absorbed, rows);
     }
 
     /// <summary>
