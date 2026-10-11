@@ -134,9 +134,10 @@ public sealed class ClaudeCodeAi : IAiPlayer
         {
             sb.AppendLine($"Modern game: everyone shares this board. The squares on offer are your private hand of {ModernRules.HandSize}; you draw a new one after playing.");
             sb.AppendLine($"Rules: growth raises the share price only (no cash dividends). You may buy at most {ModernRules.BuyLimitPerTurn} shares per turn " +
-                          $"(you have {game.BuyAllowanceLeft} left); selling is unlimited. Each company has {ModernRules.SharesPerCompany} shares in total (doubled by each split). " +
+                          $"(you have {game.BuyAllowanceLeft} left); selling is unlimited. Each company has {ModernRules.SharesPerCompany} shares in total and shares never split. " +
                           $"Founding gives {ModernRules.FreeShares} free shares and no cash. In a merger, shares in the company taken over are paid out in cash at its price, " +
-                          $"and its largest holder gets a bonus of {ModernRules.LargestHolderBonus}x its share price, the second-largest {ModernRules.SecondHolderBonus}x. " +
+                          $"and its largest holder gets a bonus of {ModernRules.LargestHolderBonus}x its share price, the second-largest {ModernRules.SecondHolderBonus}x " +
+                          $"(you need at least {ModernRules.MinSharesForBonus} shares to qualify). " +
                           $"Cash earns {ModernRules.InterestPercent}% interest at the start of each of your turns, so holding cash can make sense.");
             if (game.CurrentEvent is EventCard now && game.NextEvent is EventCard next)
                 sb.AppendLine($"Event this round: {EventCards.Title(now)} ({EventCards.Description(now)}) " +

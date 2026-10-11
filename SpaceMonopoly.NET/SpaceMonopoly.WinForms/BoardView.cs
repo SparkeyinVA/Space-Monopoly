@@ -48,6 +48,9 @@ internal sealed class BoardView : Control
 
     public event EventHandler<Pos>? SquareClicked;
 
+    /// <summary>Raised when an offered square is right-clicked (Modern: swap it for a new one).</summary>
+    public event EventHandler<Pos>? SquareRightClicked;
+
     public void ShowBoard(Board? board, IReadOnlyList<Pos> choices, Pos? marked = null, IReadOnlyList<ChoiceMark>? marks = null)
     {
         _board = board;
@@ -126,8 +129,9 @@ internal sealed class BoardView : Control
     protected override void OnMouseClick(MouseEventArgs e)
     {
         base.OnMouseClick(e);
-        if (e.Button == MouseButtons.Left && AcceptClicks && HitTest(e.Location) is Pos p && _choices.Contains(p))
-            SquareClicked?.Invoke(this, p);
+        if (!AcceptClicks || HitTest(e.Location) is not Pos p || !_choices.Contains(p)) return;
+        if (e.Button == MouseButtons.Left) SquareClicked?.Invoke(this, p);
+        else if (e.Button == MouseButtons.Right) SquareRightClicked?.Invoke(this, p);
     }
 
     protected override void OnPaint(PaintEventArgs e)

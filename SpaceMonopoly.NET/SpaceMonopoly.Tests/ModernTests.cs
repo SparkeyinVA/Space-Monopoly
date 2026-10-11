@@ -140,7 +140,7 @@ public class ModernTests
         Play(game, new Pos(3, 1));        // A grows
         game.EndTurn();
         Play(game, new Pos(5, 1));        // B grows; A and B are one square apart
-        game.Buy(1, 1);                   // P1 holds 4 B shares
+        game.Buy(1, ModernRules.MinSharesForBonus - 3);   // P1 holds 10 B shares, just enough for a bonus
         game.EndTurn();
 
         long bPrice = game.Companies[1].Value;
@@ -153,13 +153,40 @@ public class ModernTests
         Assert.Equal(0, game.Players[1].Shares[1]);
         Assert.Equal(3, game.Players[0].Shares[0]);
         Assert.Equal(0, game.Players[1].Shares[0]);   // no free survivor shares
-        // P1, the only holder of B, is paid for 4 shares and gets both bonuses.
-        Assert.Equal(p1Money + 4 * bPrice + 15 * bPrice, game.Players[1].Money);
+        // P1, the only qualifying holder of B, is paid for its 10 shares and gets both bonuses.
+        Assert.Equal(p1Money + ModernRules.MinSharesForBonus * bPrice + 15 * bPrice, game.Players[1].Money);
         Assert.Equal(p0Money, game.Players[0].Money);
     }
 
     [Fact]
-    public void Splits_double_the_supply()
+    public void Holders_of_fewer_than_ten_shares_get_no_bonus()
+    {
+        var bonuses = Game.MajorityBonuses([(0, 9), (1, 3)], price: 100);
+        Assert.Empty(bonuses);
+        bonuses = Game.MajorityBonuses([(0, 9), (1, 10)], price: 100);
+        Assert.Equal(new BigInteger(1500), bonuses[1]);   // the only qualifying holder gets both
+        Assert.False(bonuses.ContainsKey(0));
+    }
+
+    [Fact]
+    public void One_square_can_be_swapped_each_turn()
+    {
+        var game = NewModern();
+        var swapped = game.HandOf(0)[0];
+        game.Swap(swapped);
+        Assert.DoesNotContain(swapped, game.HandOf(0));
+        Assert.Equal(ModernRules.HandSize, game.HandOf(0).Count);
+        Assert.Equal(game.HandOf(0), game.Choices);
+        Assert.False(game.CanSwap);
+        Assert.Throws<InvalidOperationException>(() => game.Swap(game.HandOf(0)[0]));
+
+        game.PlaceSquare(game.Choices[0]);
+        game.EndTurn();
+        Assert.True(game.CanSwap);          // the next player's turn
+    }
+
+    [Fact]
+    public void Modern_shares_never_split()
     {
         var game = NewModern(players: 1, circles: [new Pos(1, 0), new Pos(3, 0), new Pos(1, 2), new Pos(3, 2)]);
         Play(game, new Pos(2, 1));        // touches no planet: a star
@@ -168,10 +195,11 @@ public class ModernTests
         game.EndTurn();
         Play(game, new Pos(3, 1));        // + 100 + 2 planets = 2,300
         game.EndTurn();
-        var events = Play(game, new Pos(2, 2));   // + 1,100 = 3,400, so it splits
-        Assert.Contains(events, e => e is SplitEvent);
-        Assert.Equal(2 * ModernRules.SharesPerCompany, game.Companies[0].Supply);
-        Assert.Equal(2 * ModernRules.FreeShares, game.Players[0].Shares[0]);
+        var events = Play(game, new Pos(2, 2));   // + 1,100 = 3,400: Classic would split here
+        Assert.DoesNotContain(events, e => e is SplitEvent);
+        Assert.Equal(3400, game.Companies[0].Value);
+        Assert.Equal(ModernRules.SharesPerCompany, game.Companies[0].Supply);
+        Assert.Equal(ModernRules.FreeShares, game.Players[0].Shares[0]);
     }
 
     [Fact]

@@ -40,6 +40,14 @@ public sealed class RuleBasedAi : IAiPlayer
         if (game.CanProspect && Level != AiLevel.Easy && MovePreview.ForChoices(game).All(m => m.Kind == MoveKind.Star))
             game.Prospect();
 
+        // Swap the square that does least for us, if it does nothing at all.
+        if (game.CanSwap && Level != AiLevel.Easy)
+        {
+            int me0 = game.CurrentPlayerIndex;
+            var worst = MovePreview.ForChoices(game).OrderBy(m => m.NetWorthChange[me0]).ThenBy(m => m.Kind == MoveKind.Star ? 0 : 1).First();
+            if (worst.NetWorthChange[me0] <= 0) game.Swap(worst.At);
+        }
+
         var legal = game.LegalChoices();
         if (legal.Count == 0) throw new InvalidOperationException("No legal squares to choose from.");
         int me = game.CurrentPlayerIndex;

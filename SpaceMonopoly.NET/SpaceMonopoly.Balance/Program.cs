@@ -5,31 +5,37 @@ using SpaceMonopoly.Core.Ai;
 
 // Plays computer-vs-computer games and reports the balance measures from CLAUDE.md.
 //
-//   dotnet run -c Release --project SpaceMonopoly.Balance                 the standard report (Modern and Classic)
-//   dotnet run -c Release --project SpaceMonopoly.Balance -- --type Modern --size Medium --players Hard,Hard,Hard --games 200
+//   dotnet run -c Release --project SpaceMonopoly.Balance                 the standard Modern report
+//   dotnet run -c Release --project SpaceMonopoly.Balance -- --classic yes  the same for Classic (slow: long games)
+//   dotnet run -c Release --project SpaceMonopoly.Balance -- --type Modern --size Medium --players Hard,Medium,Easy --games 200
 //
 // --type Modern|Classic|Tournament   --size Small|Medium|Large   --players a comma list of Easy, Medium and Hard
-// --games N (default 200)   --seed N (first seed, default 1)
+// --chaos Calm|Standard|Wild|None (Modern events, default Standard)   --games N (default 200)   --seed N (first seed, default 1)
 
 var options = Options.Parse(args);
 if (options.Custom)
 {
-    Report.Print(Simulator.Run(options.Type, options.Size, options.Players, options.Games, options.Seed));
+    var results = Simulator.Run(options.Type, options.Size, options.Players, options.Games, options.Seed, options.Chaos);
+    Report.Print(results);
+    if (options.Players.Distinct().Count() > 1) Report.PrintWinRates(results, "Wins by level");
     return;
 }
 
-Console.WriteLine($"Space Monopoly balance report ({options.Games} games per line, seeds from {options.Seed})");
+var type = options.Classic ? GameType.Classic : GameType.Modern;
+Console.WriteLine($"Space Monopoly balance report: {type}, medium grid, {(type == GameType.Modern ? options.Chaos + " events, " : "")}" +
+                  $"{options.Games} games per setup, seeds from {options.Seed}");
 Console.WriteLine();
-foreach (var type in new[] { GameType.Modern, GameType.Classic })
-{
-    Console.WriteLine($"== {type}, medium grid ==");
-    Report.Print(Simulator.Run(type, GridSize.Medium, [AiLevel.Hard, AiLevel.Hard, AiLevel.Hard], options.Games, options.Seed));
-    Report.PrintWinRates(Simulator.Run(type, GridSize.Medium, [AiLevel.Hard, AiLevel.Easy], options.Games, options.Seed), "Hard v Easy, one-on-one");
-    Report.PrintWinRates(Simulator.Run(type, GridSize.Medium, [AiLevel.Hard, AiLevel.Medium, AiLevel.Easy], options.Games, options.Seed), "Hard v Medium v Easy");
-    Console.WriteLine();
-}
+Console.WriteLine("== Hard, Medium, Easy (headline) ==");
+var mixed = Simulator.Run(type, GridSize.Medium, [AiLevel.Hard, AiLevel.Medium, AiLevel.Easy], options.Games, options.Seed, options.Chaos);
+Report.Print(mixed);
+Report.PrintWinRates(mixed, "Wins by level");
+Console.WriteLine();
+Console.WriteLine("== Hard, Hard, Hard ==");
+Report.Print(Simulator.Run(type, GridSize.Medium, [AiLevel.Hard, AiLevel.Hard, AiLevel.Hard], options.Games, options.Seed, options.Chaos));
+Console.WriteLine();
+Report.PrintWinRates(Simulator.Run(type, GridSize.Medium, [AiLevel.Hard, AiLevel.Easy], options.Games, options.Seed, options.Chaos), "Hard v Easy, one-on-one");
 
-internal sealed record Options(bool Custom, GameType Type, GridSize Size, AiLevel[] Players, int Games, int Seed)
+internal sealed record Options(bool Custom, bool Classic, GameType Type, GridSize Size, AiLevel[] Players, int Games, int Seed, Chaos Chaos)
 {
     public static Options Parse(string[] args)
     {
@@ -39,11 +45,13 @@ internal sealed record Options(bool Custom, GameType Type, GridSize Size, AiLeve
 
         return new Options(
             Custom: map.ContainsKey("type") || map.ContainsKey("players") || map.ContainsKey("size"),
+            Classic: map.ContainsKey("classic"),
             Type: Enum.Parse<GameType>(Get("type", "Modern"), ignoreCase: true),
             Size: Enum.Parse<GridSize>(Get("size", "Medium"), ignoreCase: true),
             Players: Get("players", "Hard,Hard,Hard").Split(',').Select(p => Enum.Parse<AiLevel>(p.Trim(), ignoreCase: true)).ToArray(),
             Games: int.Parse(Get("games", "200"), CultureInfo.InvariantCulture),
-            Seed: int.Parse(Get("seed", "1"), CultureInfo.InvariantCulture));
+            Seed: int.Parse(Get("seed", "1"), CultureInfo.InvariantCulture),
+            Chaos: Enum.Parse<Chaos>(Get("chaos", "Standard"), ignoreCase: true));
     }
 }
 
@@ -55,6 +63,9 @@ internal sealed record GameResult(
     int LastAtHalfway,
     int Turns,
     int DeadTurns,
+    int NothingForYouTurns,
+    int Mergers,
+    int MergersWithoutBonus,
     double CashShareSum,
     int CashShareCount,
     int LeadChanges,
@@ -62,14 +73,14 @@ internal sealed record GameResult(
 
 internal static class Simulator
 {
-    public static List<GameResult> Run(GameType type, GridSize size, AiLevel[] levels, int games, int firstSeed)
+    public static List<GameResult> Run(GameType type, GridSize size, AiLevel[] levels, int games, int firstSeed, Chaos chaos)
     {
         var results = new GameResult[games];
-        Parallel.For(0, games, g => results[g] = Play(type, size, levels, firstSeed + g));
+        Parallel.For(0, games, g => results[g] = Play(type, size, levels, firstSeed + g, chaos));
         return [.. results];
     }
 
-    private static GameResult Play(GameType type, GridSize size, AiLevel[] levels, int seed)
+    private static GameResult Play(GameType type, GridSize size, AiLevel[] levels, int seed, Chaos chaos)
     {
         var spec = GridSpec.For(size);
         var board = new Board(spec.Width, spec.Height);
@@ -77,21 +88,28 @@ internal static class Simulator
 
         // Rotate the seats so no level always goes first.
         var seats = levels.Select((l, i) => levels[(i + seed) % levels.Length]).ToArray();
-        var game = new Game(spec, board, seats.Select((l, i) => ($"{l} {i + 1}", ToKind(l))), type, new GameRules(), seed);
+        var game = new Game(spec, board, seats.Select((l, i) => ($"{l} {i + 1}", ToKind(l))), type, new GameRules { Chaos = chaos }, seed);
         var ais = seats.Select((l, i) => new RuleBasedAi(l, seed * 31 + i)).ToArray();
 
-        int turns = 0, dead = 0, leadChanges = 0, leader = -1, lastAtHalfway = -1;
+        int turns = 0, dead = 0, nothingForYou = 0, mergers = 0, unpaid = 0, leadChanges = 0, leader = -1, lastAtHalfway = -1;
         double cashShare = 0;
         int cashCount = 0;
         int halfway = Math.Max(1, game.GoesPerPlayer / 2);
 
         while (game.Phase != GamePhase.Over)
         {
-            // A dead turn: every square on offer only places a star.
-            if (MovePreview.ForChoices(game).All(m => m.Kind == MoveKind.Star)) dead++;
+            // A dead turn: every square on offer only places a star. "Nothing for you": no square raises your own net worth.
+            // Both are measured at the start of the turn, before any swap or prospect.
+            var previews = MovePreview.ForChoices(game);
+            if (previews.All(m => m.Kind == MoveKind.Star)) dead++;
+            if (previews.All(m => m.NetWorthChange[game.CurrentPlayerIndex] <= 0)) nothingForYou++;
 
             var ai = ais[game.CurrentPlayerIndex];
-            game.PlaceSquare(ai.ChooseSquare(game));
+            foreach (var merger in game.PlaceSquare(ai.ChooseSquare(game)).OfType<MergerEvent>())
+            {
+                mergers++;
+                if (merger.Rows.All(r => r.Bonus == 0)) unpaid++;
+            }
             TradeExecutor.Apply(game, ai.PlanTrades(game));
             turns++;
 
@@ -113,7 +131,7 @@ internal static class Simulator
         }
 
         var final = Enumerable.Range(0, game.Players.Count).Select(game.NetWorth).ToArray();
-        return new GameResult(seats, final, Leader(game), lastAtHalfway, turns, dead, cashShare, cashCount, leadChanges,
+        return new GameResult(seats, final, Leader(game), lastAtHalfway, turns, dead, nothingForYou, mergers, unpaid, cashShare, cashCount, leadChanges,
             game.NoMoreCompanies && game.Turn < game.GoesPerPlayer);
     }
 
@@ -149,6 +167,9 @@ internal static class Report
         int turns = results.Sum(r => r.Turns);
 
         Row("Turns with no useful square", Percent(results.Sum(r => r.DeadTurns), turns), "under 2%");
+        Row("Turns where no square helps you", Percent(results.Sum(r => r.NothingForYouTurns), turns), "");
+        Row("Mergers per game; share with no bonus paid", $"{(double)results.Sum(r => r.Mergers) / results.Count:0.0}; " +
+            Percent(results.Sum(r => r.MergersWithoutBonus), results.Sum(r => r.Mergers)), "");
         if (ratios.Count > 0)
         {
             Row("Winner / second place, median", $"{Quantile(ratios, 0.5):0.00}x", "1.3-1.5x");

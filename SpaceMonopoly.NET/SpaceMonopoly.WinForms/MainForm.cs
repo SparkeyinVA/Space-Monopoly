@@ -164,6 +164,7 @@ internal sealed class MainForm : Form
         side.Controls.Add(logBox, 0, 4);
 
         _boardView.SquareClicked += (_, p) => HumanChooses(p);
+        _boardView.SquareRightClicked += (_, p) => HumanSwaps(p);
 
         Controls.Add(_boardView);
         Controls.Add(side);
@@ -482,6 +483,21 @@ internal sealed class MainForm : Form
         RefreshAll();
     }
 
+    private void HumanSwaps(Pos square)
+    {
+        var game = _game;
+        if (game is null || _computerBusy || !game.CurrentPlayer.IsHuman || !game.IsModern) return;
+        if (!game.CanSwap)
+        {
+            SetStatus("You've already swapped a square this turn. Play one of the squares in your hand.");
+            return;
+        }
+        int number = game.Choices.ToList().IndexOf(square) + 1;
+        game.Swap(square);
+        Log($"{game.CurrentPlayer.Name} swapped square {number} for a new one.");
+        RefreshAll();
+    }
+
     private void HumanProspects()
     {
         var game = _game;
@@ -652,7 +668,10 @@ internal sealed class MainForm : Form
 
             if (!inProgress) SetStatus("Choose Game > New Game to play again.");
             else if (!_computerBusy && player.IsHuman && game.Phase == GamePhase.ChoosingSquare)
-                SetStatus((game.IsModern ? "Play a square from your hand" + (game.CanProspect ? ", or Prospect for a new hand" : "") : "Choose a square") +
+                SetStatus((game.IsModern
+                              ? "Play a square from your hand" + (game.CanSwap ? " (right-click one to swap it)" : "") +
+                                (game.CanProspect ? ", or Prospect for a new hand" : "")
+                              : "Choose a square") +
                           " (point at one for details):" + Environment.NewLine +
                           string.Join(Environment.NewLine, Previews(game).Select((m, i) => $"{i + 1}. {m.Summary(Currency, game.CurrentPlayerIndex)}" + (m.Allowed is null ? "" : " (not allowed)"))));
             else if (!_computerBusy && player.IsHuman)

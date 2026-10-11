@@ -18,7 +18,7 @@ public static class ModernRules
     /// <summary>Shares a player may buy in one turn, across all companies. Selling is unlimited.</summary>
     public const int BuyLimitPerTurn = 100;
 
-    /// <summary>Shares in a new company, held by all players together. Each split doubles it.</summary>
+    /// <summary>Shares in a new company, held by all players together.</summary>
     public const int SharesPerCompany = 1000;
 
     /// <summary>Free shares for founding a company (no cash bonus).</summary>
@@ -29,6 +29,9 @@ public static class ModernRules
 
     /// <summary>...and the second-largest this many times.</summary>
     public const long SecondHolderBonus = 5;
+
+    /// <summary>Only players holding at least this many shares of the company taken over qualify for a bonus (F3).</summary>
+    public const int MinSharesForBonus = 10;
 
     /// <summary>Interest on cash, paid at the start of each player's turn (S6), rounded down.</summary>
     public const int InterestPercent = 3;

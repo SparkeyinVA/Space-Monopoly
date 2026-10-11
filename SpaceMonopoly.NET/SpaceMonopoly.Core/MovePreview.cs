@@ -104,6 +104,9 @@ public sealed record MovePreview(
                     .Select(r => $"{(r.Player == game.CurrentPlayerIndex ? "you" : game.Players[r.Player].Name)} {currency.Format(r.Bonus)}")
                     .ToList();
                 if (bonuses.Count > 0) lines.Add("Majority bonus: " + string.Join(" · ", bonuses) + ".");
+                else if (game.IsModern && !Events.OfType<MergerEvent>().SelectMany(m => m.Rows).Any(r => r.Bonus > 0))
+                    lines.Add($"No majority bonus: nobody holds the {ModernRules.MinSharesForBonus} shares needed to qualify.");
+                if (game.IsModern && bonuses.Count > 0) lines.Add($"(Holders of at least {ModernRules.MinSharesForBonus} shares qualify.)");
                 break;
             case MoveKind.Found:
                 long free = Events.OfType<CompanyFoundedEvent>().First().FreeShares;

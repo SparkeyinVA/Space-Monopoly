@@ -41,6 +41,7 @@ public sealed partial class Game
     private readonly List<Pos>[] _hands;
     private readonly bool[] _prospected;
     private BigInteger _boughtThisTurn;
+    private bool _swappedThisTurn;
 
     public Game(GridSpec spec, Board startingBoard, IEnumerable<(string Name, PlayerKind Kind)> players,
         GameType type, GameRules rules, int? seed = null)
@@ -86,6 +87,7 @@ public sealed partial class Game
         _hands = other._hands.Select(h => new List<Pos>(h)).ToArray();
         _prospected = (bool[])other._prospected.Clone();
         _boughtThisTurn = other._boughtThisTurn;
+        _swappedThisTurn = other._swappedThisTurn;
         InterestThisTurn = other.InterestThisTurn;
         CopyEvents(other);
         _rng = other._rng.Fork();
@@ -176,6 +178,7 @@ public sealed partial class Game
     private void BeginTurn()
     {
         _boughtThisTurn = 0;
+        _swappedThisTurn = false;
         InterestThisTurn = IsModern ? CurrentPlayer.Money * ModernRules.InterestPercent / 100 : 0;
         CurrentPlayer.Money += InterestThisTurn;
         _choices = IsModern ? RefreshHand(CurrentPlayerIndex) : GenerateChoices();
@@ -259,6 +262,21 @@ public sealed partial class Game
     {
         var s = Board.Survey(p);
         return s.Companies.Count > 0 || s.NextToCircleOrDiamond;
+    }
+
+    /// <summary>True if the current player may still swap one square from their hand this turn (Modern).</summary>
+    public bool CanSwap => IsModern && Phase == GamePhase.ChoosingSquare && !_swappedThisTurn;
+
+    /// <summary>Throws away one square from the current player's hand and draws a replacement (once per turn).</summary>
+    public void Swap(Pos square)
+    {
+        if (!CanSwap) throw new InvalidOperationException("You can swap only one square a turn, before you play.");
+        var hand = _hands[CurrentPlayerIndex];
+        if (!hand.Remove(square)) throw new InvalidOperationException("That square isn't in your hand.");
+        _swappedThisTurn = true;
+        FillHand(CurrentPlayerIndex, exclude: [square]);
+        if (hand.Count < ModernRules.HandSize && !hand.Contains(square)) hand.Add(square);   // nothing else to draw
+        _choices = [.. hand];
     }
 
     /// <summary>Throws away squares that can no longer be played, tops the hand up and returns it.</summary>
@@ -525,11 +543,12 @@ public sealed partial class Game
     /// Modern merger bonuses: the largest holder gets <see cref="ModernRules.LargestHolderBonus"/> times the share price
     /// and the second-largest <see cref="ModernRules.SecondHolderBonus"/> times. Players tied for largest share both
     /// bonuses evenly; players tied for second share the second bonus. A sole holder gets both.
+    /// Only holders of at least <see cref="ModernRules.MinSharesForBonus"/> shares qualify.
     /// </summary>
     internal static Dictionary<int, BigInteger> MajorityBonuses(IEnumerable<(int Player, BigInteger Shares)> holdings, long price)
     {
         var result = new Dictionary<int, BigInteger>();
-        var holders = holdings.Where(h => h.Shares > 0).OrderByDescending(h => h.Shares).ToList();
+        var holders = holdings.Where(h => h.Shares >= ModernRules.MinSharesForBonus).OrderByDescending(h => h.Shares).ToList();
         if (holders.Count == 0) return result;
 
         BigInteger first = ModernRules.LargestHolderBonus * price, second = ModernRules.SecondHolderBonus * price;
@@ -548,14 +567,16 @@ public sealed partial class Game
         return result;
     }
 
+    /// <summary>Splits shares two for one while the price is ₲3,200 or more. Modern has no splits (Q2 in CLAUDE.md).</summary>
     private void CheckSplit(int companyIndex, List<GameEvent> events)
     {
+        if (IsModern) return;
         var company = Companies[companyIndex];
         while (company.Value >= SplitThreshold)
         {
             long old = company.Value;
             company.Value /= 2;
-            company.Supply *= 2;   // Modern: every holder's shares double, and so does the supply
+
             var rows = new List<SplitRow>();
             foreach (int i in Recipients)
             {
