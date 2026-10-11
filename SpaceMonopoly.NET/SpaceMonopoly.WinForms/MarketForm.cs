@@ -9,7 +9,7 @@ namespace SpaceMonopoly.WinForms;
 internal sealed class MarketForm : Form
 {
     private const int ColLetter = 0, ColName = 1, ColPrice = 2, ColSize = 3, ColLeft = 4, ColYou = 5, ColHolders = 6,
-        ColBuy = 7, ColSell = 8, ColMax = 9, ColSellAll = 10, ColNote = 11;
+        ColBuy = 7, ColSell = 8, ColMax = 9, ColSellAll = 10, ColNote = 11, ColSplit = 12;
 
     private readonly Game _game;
     private readonly Currency _currency;
@@ -136,11 +136,13 @@ internal sealed class MarketForm : Form
             Text("Sell", 42, readOnly: false, align: right),
             Button("Max", 38),
             Button("Sell all", 46),
-            Text("", 150));
+            Text("", 150),
+            Text("Next split", 80));
         _grid.Columns[ColBuy].DefaultCellStyle.BackColor = Color.FromArgb(240, 255, 240);
         _grid.Columns[ColSell].DefaultCellStyle.BackColor = Color.FromArgb(255, 242, 242);
         _grid.Columns[ColNote].DefaultCellStyle.ForeColor = Color.Firebrick;
         _grid.Columns[ColLeft].Visible = _game.IsModern;
+        _grid.Columns[ColSplit].Visible = _game.IsModern;
     }
 
     private void Refill()
@@ -179,7 +181,8 @@ internal sealed class MarketForm : Form
             int row = _grid.Rows.Add(
                 Company.LetterFor(c).ToString(), company.Name, _currency.Format(company.Value), _game.Board.CompanySize(c),
                 _game.IsModern ? Currency.Number(_game.SharesLeft(c)) : "", Currency.Number(me.Shares[c]), top,
-                _order.BuyOf(c) == 0 ? "" : _order.BuyOf(c).ToString(), _order.SellOf(c) == 0 ? "" : _order.SellOf(c).ToString(), null, null, "");
+                _order.BuyOf(c) == 0 ? "" : _order.BuyOf(c).ToString(), _order.SellOf(c) == 0 ? "" : _order.SellOf(c).ToString(), null, null, "",
+                ModernRules.NextSplit(company.Splits) is var (sq, at) ? $"{sq} sq & {_currency.Format(at)}" : "blue chip");
             _rowCompany.Add(c);
             var cells = _grid.Rows[row].Cells;
             cells[ColLetter].Style.BackColor = Color.FromArgb(Company.Colors[c]);

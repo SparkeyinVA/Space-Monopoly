@@ -51,7 +51,7 @@ public static class RulesText
         Line("  • Anywhere else: a star is placed.");
         Line(modern
             ? $"Then buy and sell shares: up to {ModernRules.BuyLimitPerTurn} shares a turn across all companies, and any number sold. " +
-              $"Each company has {ModernRules.SharesPerCompany:N0} shares shared by all players; the company buttons show how many are left. Press End Turn when you're done."
+              $"A new company has {ModernRules.SharesPerCompany:N0} shares shared by all players; the company buttons show how many are left (or \"sold out\"). Press End Turn when you're done."
             : "Then buy and sell any number of shares: click a company's button on the right. Press End Turn when you're done.");
         Line();
 
@@ -90,6 +90,12 @@ public static class RulesText
 
         if (modern)
         {
+            Line("SHARE SPLITS");
+            Line($"A company splits when it is established: the first time it has {ModernRules.FirstSplitSquares} or more squares AND a share price of " +
+                 $"{c.Format(ModernRules.FirstSplitPrice)} or more, the second time at {ModernRules.SecondSplitSquares}+ squares AND {c.Format(ModernRules.SecondSplitPrice)}+. " +
+                 $"A split halves the price, doubles every holder's shares and doubles the number of shares the company has, so it can never sell out for good. " +
+                 "After two splits it's a blue chip and never splits again. The company buttons and the Market show how close each company is.");
+            Line();
             Line("SPECIAL SQUARES (medium and large grids)");
             Line($"  • Nebula (purple cloud): a company square next to it gets double the planet bonus ({2 * Game.CircleBonus} a planet instead of {Game.CircleBonus}).");
             Line("  • Black hole: squares next to it can't be played.");

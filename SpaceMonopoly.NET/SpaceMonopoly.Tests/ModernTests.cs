@@ -81,12 +81,13 @@ public class ModernTests
     public void Cash_earns_interest_at_the_start_of_each_turn()
     {
         var game = NewModern(players: 2);
-        Assert.Equal(Game.StartingMoney * ModernRules.InterestPercent / 100, game.InterestThisTurn);
-        Assert.Equal(Game.StartingMoney * (100 + ModernRules.InterestPercent) / 100, game.Players[0].Money);
-        Assert.Equal(Game.StartingMoney, game.Players[1].Money);   // paid on their own turn
+        long start = ModernRules.StartingMoney;
+        Assert.Equal(start * ModernRules.InterestPercent / 100, game.InterestThisTurn);
+        Assert.Equal(start * (100 + ModernRules.InterestPercent) / 100, game.Players[0].Money);
+        Assert.Equal(start, game.Players[1].Money);   // paid on their own turn
         game.PlaceSquare(game.Choices[0]);
         game.EndTurn();
-        Assert.Equal(Game.StartingMoney * (100 + ModernRules.InterestPercent) / 100, game.Players[1].Money);
+        Assert.Equal(start * (100 + ModernRules.InterestPercent) / 100, game.Players[1].Money);
 
         var classic = RulesTests.NewGame();
         Assert.Equal(Game.StartingMoney, classic.Players[0].Money);
@@ -96,12 +97,13 @@ public class ModernTests
     public void Buying_is_limited_per_turn_and_by_the_shares_left()
     {
         var game = NewModern(circles: new Pos(5, 4));
-        Play(game, new Pos(5, 5));             // A at 600 a share; 997 shares left
-        Assert.Equal(997, game.SharesLeft(0));
-        Assert.Equal(10, game.MaxBuy(0));      // 6,000 / 600
+        Play(game, new Pos(5, 5));             // A at 600 a share; the founder holds 3
+        Assert.Equal(ModernRules.SharesPerCompany - 3, game.SharesLeft(0));
+        var afford = game.CurrentPlayer.Money / 600;
+        Assert.Equal(BigInteger.Min(afford, ModernRules.BuyLimitPerTurn), game.MaxBuy(0));
         game.Buy(0, 4);
         Assert.Equal(ModernRules.BuyLimitPerTurn - 4, game.BuyAllowanceLeft);
-        Assert.Equal(993, game.SharesLeft(0));
+        Assert.Equal(ModernRules.SharesPerCompany - 7, game.SharesLeft(0));
         game.EndTurn();
         Assert.Equal(ModernRules.BuyLimitPerTurn, game.BuyAllowanceLeft);   // resets each turn
     }
@@ -349,12 +351,14 @@ public class ModernTests
             game.EndTurn();
         }
         game.PlaceSquare(game.Choices[0]);
-        game.CurrentPlayer.Money = 100_000;
-        game.Buy(0, 20);                                 // 23 shares, but only 3 count
-        Assert.Equal(3, game.SharesForFinalRanking(0, 0));
+        game.CurrentPlayer.Money = 1_000_000;
+        var before = game.Players[0].Shares[0];          // the founder's shares (doubled by any splits)
+        game.Buy(0, 20);                                 // bought too late to count
+        Assert.Equal(before, game.SharesForFinalRanking(0, 0));
         game.EndNow();
+        // P1's 12 shares stay first: P0's late purchase doesn't lift P0 above them.
         var payout = Assert.Single(game.GameEndEvents.OfType<FinalPayoutEvent>());
-        Assert.Equal(1, Assert.Single(payout.Payouts).Player);
+        Assert.Equal(1, payout.Payouts.MaxBy(p => p.Amount)!.Player);
     }
 
     [Fact]
@@ -502,8 +506,8 @@ public class ModernTests
         var (game, _) = MergeBIntoA(30, 10);
         var offers = game.PendingConversions.ToDictionary(o => o.Player, o => o.Owed);
         Assert.Equal(2, offers.Count);
-        // Leave only 20 survivor shares unheld.
-        game.Players[0].Shares[0] = ModernRules.SharesPerCompany - 20;
+        // Leave only 20 survivor shares unheld (the survivor may already have split, doubling its shares).
+        game.Players[0].Shares[0] = game.Companies[0].Supply - 20;
         game.Players[1].Money = game.Players[2].Money = 10_000_000;
 
         game.SettleConversions(new Dictionary<int, BigInteger> { [1] = 1_000, [2] = 1_000 });

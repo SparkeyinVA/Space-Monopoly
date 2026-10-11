@@ -54,7 +54,9 @@ public sealed class ClaudeCodeAi : IAiPlayer
                           "squares next to a black hole can't be played; the two wormhole ends count as next to each other, so companies can grow and merge through them.");
         if (game.IsModern)
         {
-            sb.AppendLine($"- Shares never split. Each company has {ModernRules.SharesPerCompany:N0} shares shared by all players.");
+            sb.AppendLine($"- A new company has {ModernRules.SharesPerCompany:N0} shares shared by all players. It splits (price halves, every holding and its share count double) " +
+                          $"the first time it has {ModernRules.FirstSplitSquares}+ squares and a price of {ModernRules.FirstSplitPrice:N0}+, and again at " +
+                          $"{ModernRules.SecondSplitSquares}+ squares and {ModernRules.SecondSplitPrice:N0}+; never more than twice.");
             sb.AppendLine($"- After playing a square you may buy up to {ModernRules.BuyLimitPerTurn} shares this turn (across all companies) and sell any number.");
             sb.AppendLine($"- Cash earns {ModernRules.InterestPercent}% interest at the start of each of your turns.");
             sb.AppendLine($"- At the end of the game every company of {ModernRules.FinalPayoutMinSquares} or more squares pays its two largest holders " +

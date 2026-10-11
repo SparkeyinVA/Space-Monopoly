@@ -33,6 +33,14 @@ public static class EventText
         return text;
     }
 
+    /// <summary>S19: how close a company is to its next split, e.g. "Next split: 5 squares & ₲1,500 (now 3 squares, ₲1,200)".</summary>
+    public static string SplitProgress(Game game, int company, Currency currency)
+    {
+        var c = game.Companies[company];
+        if (ModernRules.NextSplit(c.Splits) is not var (squares, price)) return "Blue chip: it has split twice and won't split again.";
+        return $"Next split: {squares} squares & {currency.Format(price)} (now {game.Board.CompanySize(company)} squares, {currency.Format(c.Value)}).";
+    }
+
     public static string Describe(Game game, GameEvent e, Currency currency)
     {
         string Name(int p) => game.Players[p].Name;

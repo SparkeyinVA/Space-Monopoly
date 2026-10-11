@@ -18,11 +18,39 @@ public static class ModernRules
     /// <summary>S18: a square held this many of its owner's turns without being played expires at the end of the last one.</summary>
     public static int SquareExpiryTurns { get; set; } = 4;
 
-    /// <summary>Shares a player may buy in one turn, across all companies. Selling is unlimited.</summary>
-    public const int BuyLimitPerTurn = 100;
+    // S19: these are settable so the balance tool can try other values; the game itself never changes them.
 
-    /// <summary>Shares in a new company, held by all players together.</summary>
-    public const int SharesPerCompany = 1000;
+    /// <summary>Shares a player may buy in one turn, across all companies. Selling is unlimited. (S19: 50.)</summary>
+    public static int BuyLimitPerTurn { get; set; } = 50;
+
+    /// <summary>Shares in a new company, held by all players together; each split doubles it. (S19: 100.)</summary>
+    public static int SharesPerCompany { get; set; } = 100;
+
+    /// <summary>Starting cash in a Modern game (S19).</summary>
+    public static long StartingMoney { get; set; } = 10_000;
+
+    /// <summary>S19: a company's first split needs this many squares...</summary>
+    public static int FirstSplitSquares { get; set; } = 5;
+
+    /// <summary>...and this share price.</summary>
+    public static long FirstSplitPrice { get; set; } = 1500;
+
+    /// <summary>S19: the second split needs this many squares...</summary>
+    public static int SecondSplitSquares { get; set; } = 10;
+
+    /// <summary>...and this share price. After two splits a company is a blue chip and never splits again.</summary>
+    public static long SecondSplitPrice { get; set; } = 3000;
+
+    /// <summary>S19 experiment: after each split, halve the company's growth per square too.</summary>
+    public static bool GrowthHalvesAfterSplit { get; set; }
+
+    /// <summary>The squares and price a company with this many splits needs for its next one, or null for a blue chip.</summary>
+    public static (int Squares, long Price)? NextSplit(int splits) => splits switch
+    {
+        0 => (FirstSplitSquares, FirstSplitPrice),
+        1 => (SecondSplitSquares, SecondSplitPrice),
+        _ => null,
+    };
 
     /// <summary>Free shares for founding a company (no cash bonus).</summary>
     public const long FreeShares = 3;
@@ -141,7 +169,10 @@ public sealed class Company
     /// <summary>Modern only: how many shares exist, held by all players together. Zero means unlimited.</summary>
     public BigInteger Supply { get; internal set; }
 
-    internal Company Clone() => new(Index) { Value = Value, Exists = Exists, Supply = Supply };
+    /// <summary>Modern (S19): how many times the company has split (two makes it a blue chip).</summary>
+    public int Splits { get; internal set; }
+
+    internal Company Clone() => new(Index) { Value = Value, Exists = Exists, Supply = Supply, Splits = Splits };
 
     public static Company[] CreateSet(int count) => Enumerable.Range(0, count).Select(i => new Company(i)).ToArray();
 }

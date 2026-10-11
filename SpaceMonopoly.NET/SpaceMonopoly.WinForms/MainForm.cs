@@ -1093,8 +1093,11 @@ internal sealed class MainForm : Form
             bool exists = company?.Exists == true;
             _companyButtons[c].TwoLines = slots > 6;
             string price = exists ? Currency.Format(company!.Value) : "";
-            if (exists && game!.IsModern) price += $" · {Currency.Number(game.SharesLeft(c))} left";
+            if (exists && game!.IsModern)
+                price += game.SharesLeft(c) == 0 ? " · sold out" : $" · {Currency.Number(game.SharesLeft(c))} left";
             _companyButtons[c].SetText(exists ? company!.Name : Company.Names[c], price);
+            // S19: how close the company is to its next split.
+            Ui.Tip(_companyButtons[c], exists && game!.IsModern ? EventText.SplitProgress(game, c, Currency) : "");
             _companyButtons[c].Enabled = exists && inProgress;
             _companyDots[c].Invalidate();
         }

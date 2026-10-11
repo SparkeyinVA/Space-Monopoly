@@ -45,17 +45,17 @@ public class MarketOrderTests
     {
         var game = ModernWithTwoCompanies();
         var order = new MarketOrder();
-        order.Buys[0] = 100;                    // 60,000 against about 6,000 cash
+        order.Buys[0] = 40;                     // 24,000: more than the starting cash
         var check = order.Check(game);
         Assert.Contains("Not enough cash", check.Problems[0]);
         order.Buys[0] = 1_000;
-        Assert.Contains("Only 997 shares are left", order.Check(game).Problems[0]);
+        Assert.Contains($"Only {game.SharesLeft(0)} shares are left", order.Check(game).Problems[0]);
 
         game.CurrentPlayer.Money = 10_000_000;
-        order.Buys[0] = 60;
-        order.Buys[1] = 60;
+        order.Buys[0] = ModernRules.BuyLimitPerTurn / 2 + 5;
+        order.Buys[1] = ModernRules.BuyLimitPerTurn / 2 + 5;
         check = order.Check(game);
-        Assert.Contains("only 100 more", check.Problems[0]);
+        Assert.Contains($"only {ModernRules.BuyLimitPerTurn} more", check.Problems[0]);
 
         order.Clear();
         order.Sells[1] = 1;                     // P0 holds no B
@@ -69,8 +69,8 @@ public class MarketOrderTests
         var game = ModernWithTwoCompanies();
         game.CurrentPlayer.Money = 10_000_000;
         var order = new MarketOrder();
-        order.Buys[1] = 70;
-        Assert.Equal(30, order.MaxBuy(game, 0));    // the 100-share allowance, less 70
+        order.Buys[1] = 30;
+        Assert.Equal(ModernRules.BuyLimitPerTurn - 30, order.MaxBuy(game, 0));   // the allowance, less the 30 already in the order
 
         game.CurrentPlayer.Money = 6_000;
         order.Buys[1] = 5;                          // 3,000

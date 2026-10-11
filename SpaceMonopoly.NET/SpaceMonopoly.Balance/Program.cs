@@ -16,6 +16,19 @@ using SpaceMonopoly.Core.Ai;
 var options = Options.Parse(args);
 // --expiry N: turns a square can be held before it expires (S18), for trying other values.
 if (args.SkipWhile(a => a != "--expiry").Skip(1).FirstOrDefault() is string expiry) ModernRules.SquareExpiryTurns = int.Parse(expiry, CultureInfo.InvariantCulture);
+// S19 experiment settings: --cash N, --halving yes, --split4 yes (first split at 4 squares, second at 8).
+string? Arg(string name) => args.SkipWhile(a => a != name).Skip(1).FirstOrDefault();
+if (Arg("--cash") is string cash) ModernRules.StartingMoney = long.Parse(cash, CultureInfo.InvariantCulture);
+if (Arg("--halving") is "yes") ModernRules.GrowthHalvesAfterSplit = true;
+if (Arg("--split4") is "yes") { ModernRules.FirstSplitSquares = 4; ModernRules.SecondSplitSquares = 8; }
+// --baseline yes: the rules before S19 (1,000 shares, a 100-share buy limit, 6,000 to start, no splits), for comparison.
+if (Arg("--baseline") is "yes")
+{
+    ModernRules.SharesPerCompany = 1000;
+    ModernRules.BuyLimitPerTurn = 100;
+    ModernRules.StartingMoney = 6000;
+    ModernRules.FirstSplitSquares = int.MaxValue;
+}
 Simulator.Specials = !args.Contains("--specials") || !args.SkipWhile(a => a != "--specials").Skip(1).FirstOrDefault()?.Equals("no", StringComparison.OrdinalIgnoreCase) == true;
 if (options.Personalities)
 {
@@ -94,7 +107,21 @@ internal sealed record GameResult(
     double CashShareSum,
     int CashShareCount,
     int LeadChanges,
-    bool EndedEarly);
+    bool EndedEarly,
+    SplitStats Splits);
+
+/// <summary>S19 measures for one game.</summary>
+internal sealed class SplitStats
+{
+    public List<int> FirstSplitRounds { get; } = [];
+    public List<int> SecondSplitRounds { get; } = [];
+    public int Founded { get; set; }
+    public int LastPlaceTurns { get; set; }
+    public int LastPlaceCanBuyIn { get; set; }
+    public int CompanyRounds { get; set; }
+    public int SoldOutRounds { get; set; }
+    public List<double> BonusShares { get; } = [];
+}
 
 internal static class Simulator
 {
@@ -128,9 +155,35 @@ internal static class Simulator
         double cashShare = 0;
         int cashCount = 0;
         int halfway = Math.Max(1, game.GoesPerPlayer / 2);
+        var splits = new SplitStats();
+        var splitCount = new int[game.Companies.Length];
+        double MedianWorth() => Enumerable.Range(0, game.Players.Count).Select(i => (double)game.NetWorth(i)).OrderBy(x => x).ElementAt(game.Players.Count / 2);
+        void Track(IEnumerable<GameEvent> events)
+        {
+            foreach (var e in events)
+            {
+                if (e is CompanyFoundedEvent f) { splits.Founded++; splitCount[f.Company] = 0; }
+                else if (e is SplitEvent s && ++splitCount[s.Company] is var n && n <= 2) (n == 1 ? splits.FirstSplitRounds : splits.SecondSplitRounds).Add(game.Turn + 1);
+                else if (e is MergerEvent m)
+                    foreach (var r in m.Rows.Where(r => r.Bonus > 0)) splits.BonusShares.Add((double)r.Bonus / Math.Max(1, MedianWorth()));
+            }
+        }
 
         while (game.Phase != GamePhase.Over)
         {
+            // S19: can the player in last place still buy the bonus minimum in at least half the companies?
+            if (game.IsModern && game.Players.Count > 1
+                && Enumerable.Range(0, game.Players.Count).All(i => i == game.CurrentPlayerIndex || game.NetWorth(i) > game.NetWorth(game.CurrentPlayerIndex)))
+            {
+                var live = game.Companies.Where(c => c.Exists).ToList();
+                if (live.Count > 0)
+                {
+                    splits.LastPlaceTurns++;
+                    int canBuy = live.Count(c => game.CurrentPlayer.Money >= ModernRules.MinSharesForBonus * c.Value && game.SharesLeft(c.Index) >= ModernRules.MinSharesForBonus);
+                    if (canBuy * 2 >= live.Count) splits.LastPlaceCanBuyIn++;
+                }
+            }
+
             // A dead turn: every square on offer only places a star. "Nothing for you": no square raises your own net worth.
             // Both are measured at the start of the turn, before any swap or prospect.
             var previews = MovePreview.ForChoices(game);
@@ -145,7 +198,9 @@ internal static class Simulator
             }
 
             var ai = ais[game.CurrentPlayerIndex];
-            foreach (var merger in game.PlaceSquare(ai.ChooseSquare(game)).OfType<MergerEvent>())
+            var placed = game.PlaceSquare(ai.ChooseSquare(game));
+            Track(placed);
+            foreach (var merger in placed.OfType<MergerEvent>())
             {
                 mergers++;
                 if (merger.Rows.All(r => r.Bonus == 0)) unpaid++;
@@ -175,7 +230,14 @@ internal static class Simulator
             }
 
             bool roundEnds = game.CurrentPlayerIndex == game.Players.Count - 1;
+            if (roundEnds && game.IsModern)
+                foreach (var c in game.Companies.Where(c => c.Exists))
+                {
+                    splits.CompanyRounds++;
+                    if (game.SharesLeft(c.Index) == 0) splits.SoldOutRounds++;
+                }
             game.EndTurn();
+            Track(game.RoundStartEvents);
             foreach (var card in game.RoundStartEvents.OfType<EventCardEvent>().Where(e => e.Card == EventCard.DividendDay))
             {
                 // Ranks before the payout.
@@ -200,9 +262,11 @@ internal static class Simulator
         var winnerPayout = game.GameEndEvents.OfType<FinalPayoutEvent>().SelectMany(f => f.Payouts).Where(p => p.Player == winner)
             .Aggregate(BigInteger.Zero, (sum, p) => sum + p.Amount);
         double payoutShare = final[winner] > 0 ? (double)winnerPayout / (double)final[winner] : 0;
+        foreach (var p in game.GameEndEvents.OfType<FinalPayoutEvent>().SelectMany(f => f.Payouts))
+            splits.BonusShares.Add((double)p.Amount / Math.Max(1, MedianWorth()));
         return new GameResult(seats, final, winner, lastAtHalfway, turns, dead, nothingForYou, lastTurns, lastNothing, payoutShare,
             dividendLast, dividendLeader, dividendDays, offers, conversions, convertedMoney, offeredMoney, mergers, unpaid, cashShare, cashCount, leadChanges,
-            game.NoMoreCompanies && game.Turn < game.GoesPerPlayer);
+            game.NoMoreCompanies && game.Turn < game.GoesPerPlayer, splits);
     }
 
     private static int Leader(Game game) =>
@@ -265,6 +329,21 @@ internal static class Report
         Row("Largest final net worth, highest", Currency.Default.Format(top[^1]), "under about 1 million");
         Row("Turns per game, average", $"{(double)turns / results.Count:0}", "");
         Row("Games ended early (no room for companies)", Percent(results.Count(r => r.EndedEarly), results.Count), "");
+
+        // S19 measures (Modern).
+        var s = results.Select(r => r.Splits).ToList();
+        if (s.Sum(x => x.Founded) > 0 && s.Sum(x => x.CompanyRounds) > 0)
+        {
+            var first = s.SelectMany(x => x.FirstSplitRounds).ToList();
+            var second = s.SelectMany(x => x.SecondSplitRounds).ToList();
+            Row("Round of first split / second split, average", $"{(first.Count > 0 ? first.Average() : 0):0.0} / {(second.Count > 0 ? second.Average() : 0):0.0}", "");
+            Row("Companies that split once; become blue chips", Percent(first.Count, s.Sum(x => x.Founded)) + "; " + Percent(second.Count, s.Sum(x => x.Founded)), "");
+            Row("Last place can buy 10 in half the companies", Percent(s.Sum(x => x.LastPlaceCanBuyIn), s.Sum(x => x.LastPlaceTurns)), "");
+            Row("Company-rounds sold out", Percent(s.Sum(x => x.SoldOutRounds), s.Sum(x => x.CompanyRounds)), "");
+            var bonuses = s.SelectMany(x => x.BonusShares).OrderBy(x => x).ToList();
+            if (bonuses.Count > 0)
+                Row("Typical bonus ÷ median net worth", $"{100 * bonuses[bonuses.Count / 2]:0.0}%", "");
+        }
     }
 
     public static void PrintWinRates(List<GameResult> results, string title)

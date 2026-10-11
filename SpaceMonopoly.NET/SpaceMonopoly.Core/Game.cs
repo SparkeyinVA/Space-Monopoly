@@ -55,7 +55,8 @@ public sealed partial class Game
     public Game(GridSpec spec, Board startingBoard, IEnumerable<(string Name, PlayerKind Kind)> players,
         GameType type, GameRules rules, int? seed = null)
     {
-        _players = players.Select(p => new Player(p.Name, p.Kind, StartingMoney, spec.Companies)).ToArray();
+        long startingMoney = type == GameType.Modern ? ModernRules.StartingMoney : StartingMoney;   // S19
+        _players = players.Select(p => new Player(p.Name, p.Kind, startingMoney, spec.Companies)).ToArray();
         if (_players.Length == 0) throw new ArgumentException("A game needs at least one player.", nameof(players));
         if (startingBoard.Width != spec.Width || startingBoard.Height != spec.Height)
             throw new ArgumentException("Board size doesn't match the grid size.", nameof(startingBoard));
@@ -524,6 +525,8 @@ public sealed partial class Game
         RecordClaim(p);
         long value = SquareValue;
         long circleBonus = board.Survey(p).NearNebula ? 2 * CircleBonus : CircleBonus;   // S11: a nebula doubles it
+        // S19 experiment: after each split a company's growth per square can be halved too.
+        int halvings = IsModern && ModernRules.GrowthHalvesAfterSplit ? Companies[company].Splits : 0;
         foreach (var n in board.Neighbours(p))
         {
             if (board[n] == Board.Circle)
@@ -537,7 +540,7 @@ public sealed partial class Game
                 RecordClaim(n);
             }
         }
-        return value;
+        return value >> halvings;
     }
 
     private void Found(Pos p, List<GameEvent> events)
@@ -554,6 +557,7 @@ public sealed partial class Game
         long freeShares = IsModern ? ModernRules.FreeShares : FreeShares;
         long bonus = IsModern ? 0 : company.Value;
         company.Supply = IsModern ? ModernRules.SharesPerCompany : 0;
+        company.Splits = 0;
         CurrentPlayer.Shares[company.Index] = freeShares;
         CurrentPlayer.Money += bonus;
 
@@ -656,14 +660,28 @@ public sealed partial class Game
     }
 
     /// <summary>Splits shares two for one while the price is ₲3,200 or more. Modern has no splits (Q2 in CLAUDE.md).</summary>
+    /// <summary>
+    /// Classic: splits while the price is ₲3,200 or more. Modern (S19): a company splits when it has both the squares
+    /// and the price for its next split (5 and ₲1,500, then 10 and ₲3,000), at most twice; each split also doubles
+    /// its share limit. Checked again in case one change crosses both thresholds.
+    /// </summary>
+    private bool ShouldSplit(Company company) => IsModern
+        ? company.Exists && ModernRules.NextSplit(company.Splits) is var (squares, price)
+          && Board.CompanySize(company.Index) >= squares && company.Value >= price
+        : company.Value >= SplitThreshold;
+
     private void CheckSplit(int companyIndex, List<GameEvent> events)
     {
-        if (IsModern) return;
         var company = Companies[companyIndex];
-        while (company.Value >= SplitThreshold)
+        while (ShouldSplit(company))
         {
             long old = company.Value;
             company.Value /= 2;
+            if (IsModern)
+            {
+                company.Splits++;
+                company.Supply *= 2;
+            }
 
             var rows = new List<SplitRow>();
             foreach (int i in Recipients)

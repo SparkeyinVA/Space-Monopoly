@@ -6,7 +6,7 @@ namespace SpaceMonopoly.Tests;
 public class RulesTextTests
 {
     private static readonly string[] ClassicOnly =
-        ["free shares plus cash", "cash dividend", "AND get the same number of shares", "SHARE SPLITS"];
+        ["free shares plus cash", "cash dividend", "AND get the same number of shares", "₲3,200"];
 
     private static readonly string[] ModernOnly =
         ["your hand", "interest", "New hand", "secret goal", "convert", "buying allowance"];

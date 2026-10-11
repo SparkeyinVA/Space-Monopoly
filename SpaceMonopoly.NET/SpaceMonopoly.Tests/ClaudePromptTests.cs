@@ -32,7 +32,7 @@ public class ClaudePromptTests
         ["5 free shares plus cash", "cash dividend", "same number of shares in the survivor", "split two-for-one", "cash earns nothing"];
 
     private static readonly string[] ModernOnly =
-        ["hand", "interest", "majority", "never split", "secret goal", "prospect"];
+        ["hand", "interest", "majority", "never more than twice", "secret goal", "prospect"];
 
     [Fact]
     public void Each_mode_gets_only_its_own_rules()
@@ -65,7 +65,7 @@ public class ClaudePromptTests
         string prompt = ClaudeCodeAi.BuildPrompt(game);
         Assert.Contains("Net worth change: P0 +", prompt);
         Assert.Contains("Bonus now goes to: P0", prompt);
-        Assert.Contains("You can buy 100 more shares this turn", prompt);
+        Assert.Contains($"You can buy {ModernRules.BuyLimitPerTurn} more shares this turn", prompt);
     }
 
     [Fact]

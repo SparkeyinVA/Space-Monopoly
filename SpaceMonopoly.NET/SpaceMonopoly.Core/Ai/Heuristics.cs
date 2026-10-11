@@ -161,6 +161,12 @@ internal static class Heuristics
         {
             var company = world.Companies[c];
             ratio[c] = company.Exists && company.Value > 0 ? growth[c] / company.Value : 0;
+
+            // S19: once a company splits, each square's flat price rise applies to twice as many shares, so a company
+            // close to splitting is worth more to hold (unless growth is halved after a split).
+            if (game.IsModern && !ModernRules.GrowthHalvesAfterSplit && company.Exists && ModernRules.NextSplit(company.Splits) is var (squares, price)
+                && world.Board.CompanySize(c) >= squares - 1 && company.Value >= price * 4 / 5)
+                ratio[c] *= 1.5;
         }
         return ratio;
     }
