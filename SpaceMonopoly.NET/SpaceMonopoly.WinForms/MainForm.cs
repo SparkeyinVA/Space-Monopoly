@@ -50,7 +50,11 @@ internal sealed class MainForm : Form
     private readonly Button _endTurn;
     private readonly Button _prospect;
     private readonly Button _market;
-    private readonly TableLayoutPanel _turnButtons = new() { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Margin = Padding.Empty };
+    private readonly Button _advisor;
+    private bool _advisorEnabled;
+    private int[] _advisorUses = [];
+    private Pos? _advisedSquare;
+    private readonly TableLayoutPanel _turnButtons = new() { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 1, Margin = Padding.Empty };
     private readonly ListView _playerList = Ui.Table(("Player", 120), ("Net worth", 110));
     private readonly TextBox _log = new()
     {
@@ -121,12 +125,17 @@ internal sealed class MainForm : Form
         _market = new Button { Text = "&Market", Dock = DockStyle.Fill, Margin = new Padding(4, 8, 4, 8), Enabled = false };
         _market.Click += (_, _) => OpenMarket();
         new ToolTip().SetToolTip(_market, "Buy and sell every company in one window (M).");
+        _advisor = new Button { Text = "&Advisor", Dock = DockStyle.Fill, Margin = new Padding(4, 8, 4, 8), Visible = false };
+        _advisor.Click += (_, _) => ShowAdvice();
+        new ToolTip().SetToolTip(_advisor, "What would the Hard computer player do now, and why? (A)");
+        _turnButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 0));
         _turnButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 0));
         _turnButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
         _turnButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70));
         _turnButtons.Controls.Add(_prospect, 0, 0);
-        _turnButtons.Controls.Add(_market, 1, 0);
-        _turnButtons.Controls.Add(_endTurn, 2, 0);
+        _turnButtons.Controls.Add(_advisor, 1, 0);
+        _turnButtons.Controls.Add(_market, 2, 0);
+        _turnButtons.Controls.Add(_endTurn, 3, 0);
 
         var side = _side;
         side.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -314,6 +323,9 @@ internal sealed class MainForm : Form
         // The game starts from the planets on the current grid; any companies left from the last game are cleared.
         _game = new Game(Spec, _board, form.Players.Select(p => (p.Name, p.Kind)), form.GameType, _settings.Rules with { Chaos = form.Chaos });
         _personalities = form.Players.Select(p => p.Personality ?? Personalities.Random(_rng)).ToArray();
+        _advisorEnabled = form.Advisor;
+        _advisorUses = new int[_game.Players.Count];
+        _advisedSquare = null;
         _ais = _game.Players.Select((p, i) => p.Kind.IsComputer() ? AiFactory.Create(p.Kind, _settings.Claude, personality: _personalities[i]) : null).ToArray();
         _cts = new CancellationTokenSource();
 
@@ -358,7 +370,8 @@ internal sealed class MainForm : Form
         var fresh = new List<(GridSize Size, bool Modern, int Index)>();
         foreach (var s in game.Standings())
         {
-            int index = _highScores.Add(game.Spec.Size, new HighScoreEntry(s.Name, s.NetWorth, s.Kind, game.Type, DateTime.Now));
+            int index = _highScores.Add(game.Spec.Size, new HighScoreEntry(s.Name, s.NetWorth, s.Kind, game.Type, DateTime.Now,
+                s.Player < _advisorUses.Length ? _advisorUses[s.Player] : 0));
             if (index >= 0)
             {
                 // Earlier new entries move down when a later one is inserted above them.
@@ -589,8 +602,68 @@ internal sealed class MainForm : Form
 
     // ------------------------------------------------------------------ companies and players
 
+    /// <summary>
+    /// The Advisor (S14): what Hard would do now and why. While choosing, the square is marked on the board; the trades
+    /// can be filled into the Market. Each use is counted for the high-score table. "Explain" asks Claude, if set up.
+    /// </summary>
+    private void ShowAdvice()
+    {
+        var game = _game;
+        if (game is null || _computerBusy || !game.CurrentPlayer.IsHuman || game.Phase == GamePhase.Over) return;
+        _advisorUses[game.CurrentPlayerIndex]++;
+        var advice = Advisor.Suggest(game, Currency);
+        _advisedSquare = advice.Square;
+        RefreshAll();
+        Log($"Advisor: {(advice.Choice > 0 ? $"play square {advice.Choice}. " : "")}{advice.Reason}");
+
+        var lines = new List<string> { (advice.Choice > 0 ? $"Play square {advice.Choice} (marked on the board). " : "") + advice.Reason };
+        bool claude = ClaudeCodeRunner.ResolveExecutable(_settings.Claude.ExecutablePath) is not null;
+        using var form = Ui.Dialog("Advisor", 520, 230);
+        var text = Ui.Label(string.Join(Environment.NewLine, lines));
+        text.MaximumSize = new Size(490, 0);
+        text.Padding = new Padding(14, 12, 14, 6);
+        text.Dock = DockStyle.Top;
+        var ok = Ui.Button("OK");
+        ok.DialogResult = DialogResult.OK;
+        form.AcceptButton = form.CancelButton = ok;
+        var buttons = new List<Control> { ok };
+        if (advice.Trades.Count > 0 && game.Phase == GamePhase.Trading)
+            buttons.Add(Ui.Button("Fill in the Market", (_, _) => { form.DialogResult = DialogResult.Yes; }, 140));
+        if (claude)
+            buttons.Add(Ui.Button("Explain…", async (s, _) => await ExplainAdvice(game, advice, text, (Button)s!), 100));
+        form.Controls.Add(text);
+        form.Controls.Add(Ui.ButtonBar([.. buttons]));
+        form.ResumeLayout(false);
+        if (form.ShowDialog(this) == DialogResult.Yes) OpenMarket(advice.Trades);
+    }
+
+    private const string ExplainSchema = "{\"type\":\"object\",\"properties\":{\"explanation\":{\"type\":\"string\"}},\"required\":[\"explanation\"],\"additionalProperties\":false}";
+
+    /// <summary>Asks Claude for a short plain-English explanation of the Advisor's suggestion.</summary>
+    private async Task ExplainAdvice(Game game, Advice advice, Label text, Button button)
+    {
+        button.Enabled = false;
+        text.Text += Environment.NewLine + Environment.NewLine + "Asking Claude (about 10-30 seconds)...";
+        try
+        {
+            var runner = new ClaudeCodeRunner(_settings.Claude);
+            var answer = await runner.RunAsync(
+                "You explain a board game move to a player in two or three plain sentences. Be concrete about where the money comes from.",
+                ClaudeCodeAi.DescribePosition(game) + Environment.NewLine + $"Explain why this is a good move for me: {advice.Reason}",
+                ExplainSchema,
+                CancellationToken.None);
+            text.Text = text.Text.Replace("Asking Claude (about 10-30 seconds)...", "Claude: " + answer.GetProperty("explanation").GetString());
+        }
+        catch (Exception ex) when (ex is ClaudeCodeException or System.Text.Json.JsonException or KeyNotFoundException)
+        {
+            text.Text = text.Text.Replace("Asking Claude (about 10-30 seconds)...", "Claude couldn't be reached: " + ex.Message);
+        }
+    }
+
     /// <summary>The Market window (S16): every company in one place, with a single Confirm.</summary>
-    private void OpenMarket()
+    private void OpenMarket() => OpenMarket(null);
+
+    private void OpenMarket(IReadOnlyList<TradeOrder>? suggested)
     {
         var game = _game;
         if (game is null || _computerBusy || !game.CanTrade || !game.CurrentPlayer.IsHuman) return;
@@ -598,7 +671,7 @@ internal sealed class MainForm : Form
         {
             Log(EventText.Describe(game, trade, Currency));
             RefreshAll();
-        });
+        }, suggested, _advisorEnabled ? () => { _advisorUses[game.CurrentPlayerIndex]++; return Advisor.Suggest(game, Currency).Trades; } : null);
         if (_settings.MarketWindow is [var x, var y, var w, var h] && w > 200 && h > 150 &&
             Screen.AllScreens.Any(s => s.WorkingArea.IntersectsWith(new Rectangle(x, y, w, h))))
         {
@@ -617,6 +690,11 @@ internal sealed class MainForm : Form
         if (keyData == Keys.M && _market.Enabled && ActiveForm == this)
         {
             OpenMarket();
+            return true;
+        }
+        if (keyData == Keys.A && _advisor.Visible && _advisor.Enabled && ActiveForm == this)
+        {
+            ShowAdvice();
             return true;
         }
         return base.ProcessCmdKey(ref msg, keyData);
@@ -731,7 +809,8 @@ internal sealed class MainForm : Form
             var player = game.CurrentPlayer;
             // A Modern hand is private, so another player's squares aren't shown.
             bool choosing = inProgress && game.Phase == GamePhase.ChoosingSquare && (!game.IsModern || player.IsHuman);
-            _boardView.ShowBoard(game.Board, choosing ? game.Choices : [], marks: choosing ? ChoiceMarks(game) : null);
+            if (_advisedSquare is Pos advised && !(choosing && game.Choices.Contains(advised))) _advisedSquare = null;
+            _boardView.ShowBoard(game.Board, choosing ? game.Choices : [], _advisedSquare, marks: choosing ? ChoiceMarks(game) : null);
             _goLabel.Text = inProgress
                 ? (game.NoMoreCompanies && game.Turn + 1 == game.Rounds ? "Final round" : $"Round {game.Turn + 1} of {game.Rounds}")
                   + (game.Type == GameType.Tournament ? " (tournament)" : "")
@@ -786,9 +865,13 @@ internal sealed class MainForm : Form
         _prospect.Visible = modern;
         _prospect.Enabled = modern && !_computerBusy && game!.CurrentPlayer.IsHuman && game.CanProspect;
         _market.Enabled = inProgress && !_computerBusy && game!.Phase == GamePhase.Trading && game.CurrentPlayer.IsHuman;
-        _turnButtons.ColumnStyles[0].Width = modern ? 28 : 0;
-        _turnButtons.ColumnStyles[1].Width = modern ? 28 : 30;
-        _turnButtons.ColumnStyles[2].Width = modern ? 44 : 70;
+        bool advisor = inProgress && _advisorEnabled;
+        _advisor.Visible = advisor;
+        _advisor.Enabled = advisor && !_computerBusy && game!.CurrentPlayer.IsHuman;
+        _turnButtons.ColumnStyles[0].Width = modern ? 24 : 0;
+        _turnButtons.ColumnStyles[1].Width = advisor ? 22 : 0;
+        _turnButtons.ColumnStyles[2].Width = 22;
+        _turnButtons.ColumnStyles[3].Width = 100 - _turnButtons.ColumnStyles[0].Width - _turnButtons.ColumnStyles[1].Width - 22;
 
         _playerList.BeginUpdate();
         _playerList.Items.Clear();

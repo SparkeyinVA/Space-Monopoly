@@ -42,7 +42,8 @@ public sealed record AppSettings
     public Currency Currency => new(CurrencyUnit, CurrencyPrefix);
 }
 
-public sealed record HighScoreEntry(string Name, BigInteger Wealth, PlayerKind Kind, GameType GameType, DateTime Date);
+/// <param name="AdvisorUses">How many times the player asked the Advisor during the game (S14), so assisted scores are visible.</param>
+public sealed record HighScoreEntry(string Name, BigInteger Wealth, PlayerKind Kind, GameType GameType, DateTime Date, int AdvisorUses = 0);
 
 /// <summary>Top ten scores for each grid size (replaces the old encrypted "scores" file).</summary>
 public sealed class HighScoreTable

@@ -343,6 +343,9 @@ public sealed class ClaudeCodeAi : IAiPlayer
         return sb.ToString();
     }
 
+    /// <summary>The position as Claude sees it, for asking Claude about it outside a turn (the Advisor's Explain).</summary>
+    public static string DescribePosition(Game game) => BuildPrompt(game);
+
     private static void AppendMap(StringBuilder sb, Game game)
     {
         var board = game.Board;

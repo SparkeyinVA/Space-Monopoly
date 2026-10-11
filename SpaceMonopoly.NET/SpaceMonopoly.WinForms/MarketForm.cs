@@ -35,7 +35,8 @@ internal sealed class MarketForm : Form
     private readonly CheckBox _autoOpen = new() { Text = "Open the Market after I choose a square", AutoSize = true };
     private readonly List<int> _rowCompany = [];
 
-    public MarketForm(Game game, Currency currency, bool autoOpen, Action<TradeEvent> onTrade)
+    public MarketForm(Game game, Currency currency, bool autoOpen, Action<TradeEvent> onTrade,
+        IReadOnlyList<SpaceMonopoly.Core.Ai.TradeOrder>? suggested = null, Func<IReadOnlyList<SpaceMonopoly.Core.Ai.TradeOrder>>? advisor = null)
     {
         _game = game;
         _currency = currency;
@@ -74,11 +75,14 @@ internal sealed class MarketForm : Form
 
         _autoOpen.Checked = autoOpen;
         var clear = Ui.Button("Clear", (_, _) => { _order.Clear(); Refill(); });
+        var advise = Ui.Button("Advisor", (_, _) => { if (advisor is not null) Fill(advisor()); });
+        advise.Visible = advisor is not null;
+        new ToolTip().SetToolTip(advise, "Fill in the trades the Hard computer player would make now (counted in the high scores).");
         _confirm = Ui.Button("Confirm trades", (_, _) => Confirm(), 130);
         var close = Ui.Button("Close");
         close.DialogResult = DialogResult.Cancel;
         CancelButton = close;
-        var bar = Ui.ButtonBar(close, _confirm, clear);
+        var bar = Ui.ButtonBar(close, _confirm, clear, advise);
         bar.Controls.Add(_autoOpen);
         _autoOpen.Margin = new Padding(12, 8, 12, 0);
 
@@ -88,6 +92,18 @@ internal sealed class MarketForm : Form
         Controls.Add(bar);
         ResumeLayout(false);
         PerformLayout();
+        Refill();
+        if (suggested is not null) Fill(suggested);
+    }
+
+    /// <summary>Puts suggested trades into the order (quantity 0 means as many as possible), for the player to accept or change.</summary>
+    private void Fill(IReadOnlyList<SpaceMonopoly.Core.Ai.TradeOrder> trades)
+    {
+        _order.Clear();
+        foreach (var t in trades.Where(t => t.Action == SpaceMonopoly.Core.Ai.TradeAction.Sell))
+            _order.Sells[t.Company] = t.Quantity == 0 ? _game.CurrentPlayer.Shares[t.Company] : t.Quantity;
+        foreach (var t in trades.Where(t => t.Action == SpaceMonopoly.Core.Ai.TradeAction.Buy))
+            _order.Buys[t.Company] = _order.BuyOf(t.Company) + (t.Quantity == 0 ? _order.MaxBuy(_game, t.Company) : t.Quantity);
         Refill();
     }
 

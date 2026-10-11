@@ -22,6 +22,8 @@ internal sealed class NewGameForm : Form
     private readonly RadioButton _classic = new() { Text = "Classic — the 2001 rules: everyone shares one board", AutoSize = true };
     private readonly RadioButton _tournament = new() { Text = "Tournament — everyone gets their own copy of the same board", AutoSize = true };
     private readonly ComboBox _chaos = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 330 };
+    private readonly CheckBox _advisor = new() { Text = "Advisor: let human players ask what Hard would play (counted in the high scores)", AutoSize = true };
+    private bool _advisorTouched;
     private readonly Button _add, _remove, _up, _down, _go;
     private readonly ClaudeCodeSettings _claudeSettings;
 
@@ -37,7 +39,7 @@ internal sealed class NewGameForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoScaleDimensions = new SizeF(96f, 96f);
         Font = new Font("Segoe UI", 9f);
-        ClientSize = new Size(700, 530);
+        ClientSize = new Size(700, 560);
 
         foreach (var k in Kinds) _kind.Items.Add(k.Label());
         _kind.SelectedIndex = 0;
@@ -73,7 +75,7 @@ internal sealed class NewGameForm : Form
         var listHolder = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8, 4, 0, 4) };
         listHolder.Controls.Add(_players);
 
-        var typeBox = new GroupBox { Text = "Game type", Dock = DockStyle.Bottom, Height = 136, Padding = new Padding(10, 6, 10, 6) };
+        var typeBox = new GroupBox { Text = "Game type", Dock = DockStyle.Bottom, Height = 164, Padding = new Padding(10, 6, 10, 6) };
         var typeFlow = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown };
         _chaos.Items.AddRange(["Calm — events are rare", "Standard — an event most rounds", "Wild — something happens almost every round"]);
         _chaos.SelectedIndex = (int)lastChaos;
@@ -81,7 +83,9 @@ internal sealed class NewGameForm : Form
         var chaosLabel = Ui.Label("Modern events:");
         chaosLabel.Anchor = _chaos.Anchor = AnchorStyles.Left;
         chaosRow.Controls.AddRange([chaosLabel, _chaos]);
-        typeFlow.Controls.AddRange([_modern, chaosRow, _classic, _tournament]);
+        typeFlow.Controls.AddRange([_modern, chaosRow, _classic, _tournament, _advisor]);
+        _advisor.Margin = new Padding(3, 6, 3, 0);
+        _advisor.Click += (_, _) => _advisorTouched = true;
         _modern.CheckedChanged += (_, _) => _chaos.Enabled = _modern.Checked;
         (lastType switch { GameType.Classic => _classic, GameType.Tournament => _tournament, _ => _modern }).Checked = true;
         _chaos.Enabled = _modern.Checked;
@@ -113,6 +117,9 @@ internal sealed class NewGameForm : Form
     public List<PlayerSetup> Players { get; } = [];
 
     public Chaos Chaos => (Chaos)Math.Max(0, _chaos.SelectedIndex);
+
+    /// <summary>Whether human players may use the Advisor this game (S14).</summary>
+    public bool Advisor => _advisor.Checked;
 
     public GameType GameType => _tournament.Checked ? GameType.Tournament : _classic.Checked ? GameType.Classic : GameType.Modern;
 
@@ -191,6 +198,10 @@ internal sealed class NewGameForm : Form
 
     private void UpdateButtons()
     {
+        // The Advisor is on by default when no opponent is stronger than Medium, until the player chooses.
+        if (!_advisorTouched)
+            _advisor.Checked = _players.Items.Cast<ListViewItem>().Select(i => ((PlayerSetup)i.Tag!).Kind)
+                .All(k => k is PlayerKind.Human or PlayerKind.ComputerEasy or PlayerKind.ComputerMedium);
         bool selected = _players.SelectedIndices.Count > 0;
         _remove.Enabled = _up.Enabled = _down.Enabled = selected;
         _go.Enabled = _players.Items.Count > 0;
