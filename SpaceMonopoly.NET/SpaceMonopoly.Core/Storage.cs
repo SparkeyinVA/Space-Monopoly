@@ -27,6 +27,9 @@ public sealed record AppSettings
     /// <summary>The Market window's last position and size (left, top, width, height), or null for the default.</summary>
     public int[]? MarketWindow { get; init; }
 
+    /// <summary>F18: the Market window's position and size for each grid size, since each has a different number of companies.</summary>
+    public Dictionary<GridSize, int[]> MarketWindows { get; init; } = [];
+
     /// <summary>S12: show a short tip the first time something happens.</summary>
     public bool ShowTips { get; init; } = true;
 

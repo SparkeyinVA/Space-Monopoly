@@ -1,3 +1,5 @@
+using SpaceMonopoly.Core;
+
 namespace SpaceMonopoly.WinForms;
 
 /// <summary>Small helpers for building the code-only forms consistently.</summary>
@@ -15,9 +17,38 @@ internal static class Ui
 
     public static void Tip(Control control, string text) => Tips.SetToolTip(control, text);
 
+    /// <summary>
+    /// F17: keeps a window fully on screen. When it's shown it is centred on its owner and kept inside the owner's screen,
+    /// title bar included, and no larger than the screen's working area (scrolling if it had to shrink). It's checked
+    /// again whenever the window moves to a monitor with a different scaling. Every dialog calls this.
+    /// </summary>
+    public static void KeepOnScreen(Form form)
+    {
+        // A window placed at a remembered position (StartPosition Manual) keeps it, as long as it's on screen.
+        form.Shown += (_, _) => Fit(form, centre: form.StartPosition == FormStartPosition.CenterParent);
+        form.DpiChanged += (_, _) => form.BeginInvoke(() => Fit(form, centre: false));
+    }
+
+    /// <summary>Fits a window into the working area of the screen it (or its owner) is on.</summary>
+    public static void Fit(Form form, bool centre)
+    {
+        if (form.WindowState != FormWindowState.Normal) return;
+        var owner = form.Owner is { Visible: true } o ? o : null;
+        var screen = centre && owner is not null ? Screen.FromRectangle(owner.Bounds) : Screen.FromControl(form);
+        var area = Box(screen.WorkingArea);
+        var fitted = centre && owner is not null
+            ? ScreenFit.CentreOn(Box(owner.Bounds), form.Width, form.Height, area)
+            : ScreenFit.Clamp(Box(form.Bounds), area);
+        if (fitted.Width < form.Width || fitted.Height < form.Height) form.AutoScroll = true;
+        form.Bounds = new Rectangle(fitted.Left, fitted.Top, fitted.Width, fitted.Height);
+    }
+
+    private static ScreenFit.Box Box(Rectangle r) => new(r.Left, r.Top, r.Width, r.Height);
+
     public static Form Dialog(string title, int width, int height)
     {
         var form = new Form();
+        KeepOnScreen(form);
         form.SuspendLayout();
         form.Text = title;
         form.FormBorderStyle = FormBorderStyle.FixedDialog;

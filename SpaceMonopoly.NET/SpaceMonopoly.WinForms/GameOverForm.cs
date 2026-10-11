@@ -24,6 +24,7 @@ internal sealed class GameOverForm : Form
         SuspendLayout();
         Text = "Game Over";
         StartPosition = FormStartPosition.CenterParent;
+        Ui.KeepOnScreen(this);   // F17: never off the top of a second monitor
         ShowInTaskbar = false;
         MinimizeBox = false;
         AutoScaleMode = AutoScaleMode.Dpi;

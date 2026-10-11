@@ -240,6 +240,8 @@ internal sealed class MainForm : Form
         var area = Screen.FromControl(this).WorkingArea;
         Size = new Size(Math.Min(Width, area.Width), Math.Min(Height, area.Height));
         Location = new Point(area.Left + (area.Width - Width) / 2, area.Top + (area.Height - Height) / 2);
+        // F17: after moving to a monitor with a different scaling the window is resized for it; keep it inside that screen.
+        DpiChanged += (_, _) => BeginInvoke(() => Ui.Fit(this, centre: false));
     }
 
     private Currency Currency => _settings.Currency;
@@ -1025,7 +1027,9 @@ internal sealed class MainForm : Form
             if (_tutorial is not null && trade.IsBuy) _tutorial.Progress.SharesBought += trade.Quantity;
             RefreshAll();
         }, suggested, _advisorEnabled ? () => { _advisorUses[game.CurrentPlayerIndex]++; return Advisor.Suggest(game, Currency).Trades; } : null);
-        if (_settings.MarketWindow is [var x, var y, var w, var h] && w > 200 && h > 150 &&
+        // F18: the size and position the player chose for this grid size (the window still grows to fit every company).
+        var size = game.Spec.Size;
+        if (_settings.MarketWindows.GetValueOrDefault(size) is [var x, var y, var w, var h] && w > 200 && h > 150 &&
             Screen.AllScreens.Any(s => s.WorkingArea.IntersectsWith(new Rectangle(x, y, w, h))))
         {
             form.StartPosition = FormStartPosition.Manual;
@@ -1033,7 +1037,11 @@ internal sealed class MainForm : Form
         }
         form.ShowDialog(this);
         var b = form.WindowState == FormWindowState.Normal ? form.Bounds : form.RestoreBounds;
-        _settings = _settings with { OpenMarketAfterSquare = form.AutoOpen, MarketWindow = [b.X, b.Y, b.Width, b.Height] };
+        _settings = _settings with
+        {
+            OpenMarketAfterSquare = form.AutoOpen,
+            MarketWindows = new Dictionary<GridSize, int[]>(_settings.MarketWindows) { [size] = [b.X, b.Y, b.Width, b.Height] },
+        };
         _storage.SaveSettings(_settings);
         RefreshAll();
     }

@@ -45,6 +45,7 @@ internal sealed class MarketForm : Form
         SuspendLayout();
         Text = "Market";
         StartPosition = FormStartPosition.CenterParent;
+        Ui.KeepOnScreen(this);   // F17: never off the top of a second monitor
         ShowInTaskbar = false;
         MinimizeBox = false;
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -100,6 +101,15 @@ internal sealed class MarketForm : Form
         PerformLayout();
         Refill();
         if (suggested is not null) Fill(suggested);
+
+        // F18: open tall enough to show every company without scrolling, at this screen's scaling (or the remembered
+        // size if that's bigger). KeepOnScreen then caps it to the working area.
+        Load += (_, _) =>
+        {
+            int needed = _grid.ColumnHeadersHeight + _grid.Rows.GetRowsHeight(DataGridViewElementStates.Visible) + LogicalToDeviceUnits(6);
+            int grow = needed - _grid.ClientSize.Height;
+            if (grow > 0) Height += grow;
+        };
     }
 
     /// <summary>Puts suggested trades into the order (quantity 0 means as many as possible), for the player to accept or change.</summary>

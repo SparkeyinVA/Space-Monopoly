@@ -17,6 +17,7 @@ internal sealed class HighScoresForm : Form
         MaximizeBox = MinimizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterParent;
+        Ui.KeepOnScreen(this);   // F17: never off the top of a second monitor
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoScaleDimensions = new SizeF(96f, 96f);
         Font = new Font("Segoe UI", 9f);
