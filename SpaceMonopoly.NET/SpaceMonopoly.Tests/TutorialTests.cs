@@ -1,4 +1,5 @@
 using SpaceMonopoly.Core;
+using SpaceMonopoly.Core.Ai;
 
 namespace SpaceMonopoly.Tests;
 
@@ -14,6 +15,8 @@ public class TutorialTests
     {
         Assert.Contains(ModernRules.BuyLimitPerTurn.ToString(), Tips.Text(Tips.BuyLimit));
         Assert.Contains($"{ModernRules.InterestPercent}%", Tips.Text(Tips.CantAfford));
+        Assert.Contains($"{ModernRules.HandSize + 1} squares", Tips.Text(Tips.ExtraSquare));
+        Assert.Contains($"{ModernRules.SquareExpiryTurns} turns", Tips.Text(Tips.Expiring));
         Assert.All(Tips.All, id => Assert.False(string.IsNullOrWhiteSpace(Tips.Text(id))));
     }
 
@@ -44,6 +47,25 @@ public class TutorialTests
     }
 
     [Fact]
+    public void A_learner_gets_a_merger_square_by_round_7()
+    {
+        // The seed was picked so the merger steps have something to point at; check it still does after rule changes.
+        var game = TutorialGame();
+        var ais = new[] { new RuleBasedAi(AiLevel.Medium, 1), new RuleBasedAi(AiLevel.Easy, Tutorial.Seed + 1), new RuleBasedAi(AiLevel.Easy, Tutorial.Seed + 2) };
+        int? mergerInHand = null;
+        while (game.Phase != GamePhase.Over && game.Turn < 7)
+        {
+            int me = game.CurrentPlayerIndex;
+            if (me == Tutorial.HumanSeat && MovePreview.ForChoices(game).Any(m => m.Kind == MoveKind.Merge)) mergerInHand ??= game.Turn + 1;
+            game.PlaceSquare(ais[me].ChooseSquare(game));
+            if (game.PendingConversions.Count > 0) game.SettleConversions(game.PendingConversions.ToDictionary(o => o.Player, _ => BigInteger.Zero));
+            TradeExecutor.Apply(game, ais[me].PlanTrades(game));
+            game.EndTurn();
+        }
+        Assert.NotNull(mergerInHand);
+    }
+
+    [Fact]
     public void Steps_advance_on_actions_and_on_Next()
     {
         var game = TutorialGame();
@@ -56,7 +78,7 @@ public class TutorialTests
         game.PlaceSquare(found);
         run.Progress.SquaresPlayed++;
         run.Update(game);
-        Assert.Equal("buy", run.Current!.Id);              // playing a + square also completed "found"
+        Assert.Equal("buy", run.Current!.Id);
 
         run.Progress.SharesBought = 1;
         run.Update(game);
@@ -69,5 +91,15 @@ public class TutorialTests
         Assert.Equal("bonus", run.Current!.Id);
         while (!run.Finished) run.Acknowledge();
         Assert.Null(run.Current);
+    }
+
+    [Fact]
+    public void Every_step_that_waits_for_an_action_says_what_to_do()
+    {
+        Assert.All(Tutorial.Steps.Where(s => !s.NeedsAcknowledgement), s =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(s.DoThis));
+            Assert.False(string.IsNullOrWhiteSpace(s.Waiting));
+        });
     }
 }

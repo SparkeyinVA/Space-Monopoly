@@ -36,7 +36,7 @@ internal sealed class MainForm : Form
 
     // F13: the player's hand, one row per square with what it does and Play / Swap buttons, plus New hand (F12).
     private readonly TableLayoutPanel _handPanel = new() { AutoSize = true, ColumnCount = 3, Margin = new Padding(0, 4, 0, 0), Visible = false };
-    private readonly Button _newHand = new() { AutoSize = true, Margin = new Padding(2) };
+    private readonly Button _newHand = new() { Margin = new Padding(2), Font = new Font("Segoe UI", 9f) };   // sized in ShowHand
     private string _handKey = "";
     private readonly CompanyButton[] _companyButtons = new CompanyButton[Company.MaxCount];
     private readonly Panel[] _companyDots = new Panel[Company.MaxCount];
@@ -181,7 +181,7 @@ internal sealed class MainForm : Form
         _eventLabel.ForeColor = Color.FromArgb(150, 60, 0);
         _eventLabel.MaximumSize = new Size(330, 0);
         info.Controls.AddRange([_goLabel, _eventLabel, _playerLabel, _kindLabel, _moneyLabel, _status, _handPanel]);
-        _handPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _handPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         _handPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         _handPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         _newHand.Click += (_, _) => HumanProspects();
@@ -398,6 +398,7 @@ internal sealed class MainForm : Form
         _shownStep = -1;
         _coach.HideBar();
         _boardView.Highlight = null;
+        _handPanel.BackColor = Color.Transparent;
         if (message is not null) Log(message);
     }
 
@@ -431,10 +432,12 @@ internal sealed class MainForm : Form
             if (_shownStep != run.StepIndex)
             {
                 _shownStep = run.StepIndex;
-                _coach.ShowStep(run.StepIndex + 1, Tutorial.Steps.Count, step.Text(game, Currency), step.NeedsAcknowledgement);
+                _coach.ShowStep(run.StepIndex + 1, Tutorial.Steps.Count, step.Text(game, Currency), step.NeedsAcknowledgement, step.DoThis, step.Waiting);
             }
             if (game.CurrentPlayer.IsHuman && game.Phase == GamePhase.ChoosingSquare && step.Target?.Invoke(game) is Pos target)
                 _boardView.Highlight = target;
+            // F19: the first step is about the hand, so pick out the Your hand list too.
+            _handPanel.BackColor = step.Id == "hand" ? Color.FromArgb(255, 248, 214) : Color.Transparent;
             return;
         }
 
@@ -808,10 +811,13 @@ internal sealed class MainForm : Form
             var text = Ui.Label($"{i + 1}. {preview.Summary(Currency, game.CurrentPlayerIndex)}" + (preview.Allowed is null ? "" : " (not allowed)") +
                                 (left <= 1 ? " · last turn" : left < 100 ? $" · {left} turns left" : ""));
             if (left <= 1) text.ForeColor = Color.FromArgb(190, 80, 0);
-            text.MaximumSize = new Size(LogicalToDeviceUnits(230), 0);
+            // A fixed width: as a share of an auto-sized table, the column collapsed after a move to a monitor with different scaling.
+            text.MinimumSize = text.MaximumSize = new Size(LogicalToDeviceUnits(HandTextWidth), 0);
             text.Anchor = AnchorStyles.Left;
-            var play = new Button { Text = "Play", AutoSize = true, Margin = new Padding(2), Enabled = preview.Allowed is null };
-            var swap = new Button { Text = "Swap", AutoSize = true, Margin = new Padding(2), Enabled = game.CanSwap };
+            // Fixed sizes at the window's current scaling: auto-sized buttons grew far too big after the window was dragged
+            // to a monitor with different scaling, squeezing the text.
+            var play = HandButton("Play", preview.Allowed is null);
+            var swap = HandButton("Swap", game.CanSwap);
             play.Click += (_, _) => HumanChooses(square);
             swap.Click += (_, _) => HumanSwaps(square);
             Ui.Tip(text, preview.Details(game, Currency));
@@ -829,8 +835,9 @@ internal sealed class MainForm : Form
         // F12: "New hand" instead of "Prospect", with the explanation on screen.
         _newHand.Text = game.CanProspect ? "New hand (1 left)" : "New hand (used)";
         _newHand.Enabled = game.CanProspect;
+        _newHand.Size = new Size(LogicalToDeviceUnits(2 * 58 + 4), LogicalToDeviceUnits(28));   // as wide as Play and Swap together
         var explain = Ui.Label("New hand: throw away all your squares and draw new ones, once per game.");
-        explain.MaximumSize = new Size(LogicalToDeviceUnits(230), 0);
+        explain.MinimumSize = explain.MaximumSize = new Size(LogicalToDeviceUnits(HandTextWidth), 0);
         explain.ForeColor = SystemColors.GrayText;
         explain.Anchor = AnchorStyles.Left;
         int last = game.Choices.Count + 1;
@@ -839,6 +846,18 @@ internal sealed class MainForm : Form
         _handPanel.SetColumnSpan(_newHand, 2);
         _handPanel.ResumeLayout();
     }
+
+    /// <summary>The width of each square's description in the Your hand list, in logical pixels.</summary>
+    private const int HandTextWidth = 190;
+
+    private Button HandButton(string text, bool enabled) => new()
+    {
+        Text = text,
+        Enabled = enabled,
+        Font = new Font("Segoe UI", 9f),
+        Size = new Size(LogicalToDeviceUnits(58), LogicalToDeviceUnits(28)),
+        Margin = new Padding(2),
+    };
 
     private void HumanProspects()
     {

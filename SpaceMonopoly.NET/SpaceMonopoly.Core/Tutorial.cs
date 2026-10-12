@@ -15,23 +15,29 @@ public sealed class TutorialProgress
 /// <summary>
 /// One coach step. <paramref name="Done"/> says when an action step is finished; steps that only explain something
 /// are finished by the player pressing Next (<paramref name="NeedsAcknowledgement"/>). <paramref name="Target"/> picks out
-/// a square on the board to look at, if any.
+/// a square on the board to look at, if any. An action step also says plainly what to do (<paramref name="DoThis"/>, shown in
+/// bold) and what the game is waiting for (<paramref name="Waiting"/>, shown where Next would be) (F19).
 /// </summary>
 public sealed record TutorialStep(
     string Id,
     Func<Game, Currency, string> Text,
     Func<Game, TutorialProgress, bool> Done,
     bool NeedsAcknowledgement = false,
-    Func<Game, Pos?>? Target = null);
+    Func<Game, Pos?>? Target = null,
+    string? DoThis = null,
+    string? Waiting = null);
 
 /// <summary>
 /// The guided first game (S12): a fixed board and seed, two Easy opponents and a short Modern game. Step texts are built
 /// from the rule settings, so they stay right when the numbers are tuned.
 /// </summary>
-/// <remarks>The step script below is a DRAFT until the design reviewer and the user approve the final one.</remarks>
+/// <remarks>
+/// The seed was chosen by simulating learners of each level in the human's seat: the opening hand can found a company,
+/// a merger square reaches their hand around rounds 4–6, and two to five mergers happen in the 10 rounds.
+/// </remarks>
 public static class Tutorial
 {
-    public const int Seed = 20261010;
+    public const int Seed = 19;
     public const int Rounds = 10;
     public const int HumanSeat = 0;
 
@@ -54,28 +60,32 @@ public static class Tutorial
     public static IReadOnlyList<TutorialStep> Steps { get; } =
     [
         new("hand",
-            (g, c) => $"Welcome! These flashing squares are your hand: {ModernRules.HandSize} squares only you can see. Each is marked with what it would do, " +
-                      "and the list on the right says the same. Point at a square for details, then play any square to start.",
-            (g, p) => p.SquaresPlayed > 0),
-        new("found",
-            (g, c) => $"A + square founds a new company next to a planet or star. The founder gets {ModernRules.FreeShares} free shares. Found a company now " +
-                      "(if you have no + square, Swap one square for a new one).",
-            (g, p) => g.CompaniesFounded[HumanSeat] > 0,
-            Target: g => FirstSquare(g, MoveKind.Found)),
+            (g, c) => $"Welcome! The flashing squares are your hand: {ModernRules.HandSize} squares only you can see, also listed under Your hand on the right. " +
+                      $"Each is marked with what it would do; point at one for details. A + square founds a new company next to a planet, " +
+                      $"and the founder gets {ModernRules.FreeShares} free shares.",
+            (g, p) => g.CompaniesFounded[HumanSeat] > 0 || p.SquaresPlayed > 0,
+            Target: g => FirstSquare(g, MoveKind.Found) ?? g.Choices.FirstOrDefault(),
+            DoThis: "Play a + square to found your first company: click it on the board, or press Play beside it in Your hand.",
+            Waiting: "Waiting for you to play a square"),
         new("buy",
-            (g, c) => $"After playing a square you can trade. Open the Market (button or M) and buy shares in a company: up to {ModernRules.BuyLimitPerTurn} " +
-                      $"a turn. Cash you keep earns {ModernRules.InterestPercent}% interest each turn.",
-            (g, p) => p.SharesBought > 0),
+            (g, c) => $"After playing a square you can trade. You can buy up to {ModernRules.BuyLimitPerTurn} shares a turn, and cash you keep " +
+                      $"earns {ModernRules.InterestPercent}% interest each turn.",
+            (g, p) => p.SharesBought > 0,
+            DoThis: "Press Market (or M), type a number in a company's Buy box, then press Confirm trades.",
+            Waiting: "Waiting for you to buy shares"),
         new("grow",
             (g, c) => $"Each square a company grows by raises its share price by {c.Format(Game.SquareValue)}, plus {c.Format(Game.CircleBonus)} for each planet " +
-                      "next to it. Grow a company you hold shares in (a square marked with its letter).",
+                      "next to it, so growing a company you hold makes you richer. Press End Turn when you've finished trading; the others then play.",
             (g, p) => p.GrewOwnCompany,
-            Target: g => MovePreview.ForChoices(g).FirstOrDefault(m => m.Kind == MoveKind.Grow && g.Players[HumanSeat].Shares[m.Company] > 0)?.At),
+            Target: g => MovePreview.ForChoices(g).FirstOrDefault(m => m.Kind == MoveKind.Grow && g.Players[HumanSeat].Shares[m.Company] > 0)?.At,
+            DoThis: "On a later turn, play a square marked with the letter of a company you hold (Swap a square if you have none).",
+            Waiting: "Waiting for you to grow your company"),
         new("majority",
             (g, c) => $"When two companies meet (an M square), the bigger takes over the smaller. The smaller one's two largest holders, with at least " +
-                      $"{ModernRules.MinSharesForBonus} shares, get {ModernRules.LargestHolderBonus}× and {ModernRules.SecondHolderBonus}× its share price as a bonus. " +
-                      "So buy into companies that are about to be taken over, and become their largest holder.",
-            (g, p) => false, NeedsAcknowledgement: true),
+                      $"{ModernRules.MinSharesForBonus} shares, get {ModernRules.LargestHolderBonus}× and {ModernRules.SecondHolderBonus}× its share price as a bonus " +
+                      "(doubled for each split the company has had). So buy into companies that are about to be taken over, and become their largest holder.",
+            (g, p) => false, NeedsAcknowledgement: true,
+            Target: g => FirstSquare(g, MoveKind.Merge)),
         new("bonus",
             (g, c) => "Hold a merger square until you lead the company it would take over, then play it to collect the bonus. " +
                       "The Advisor button shows what a strong player would do, if you're not sure.",
@@ -87,7 +97,8 @@ public static class Tutorial
             (g, p) => p.Swaps > 0 || p.NewHands > 0, NeedsAcknowledgement: true),
         new("end",
             (g, c) => $"A real Modern game lasts {ModernRules.Rounds} rounds. At the end, companies pay their largest holders a final payout and secret goals " +
-                      "are revealed. The highest net worth wins. You're ready: finish this game or start your own from Game > New Game.",
+                      "are revealed. The highest net worth wins. Watch the side panel for your secret goal and next round's event card. " +
+                      "You're ready: finish this game or start your own from Game > New Game.",
             (g, p) => false, NeedsAcknowledgement: true),
     ];
 }
