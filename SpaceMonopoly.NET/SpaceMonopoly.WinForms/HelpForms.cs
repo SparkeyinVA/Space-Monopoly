@@ -1,3 +1,4 @@
+using System.Reflection;
 using SpaceMonopoly.Core;
 
 namespace SpaceMonopoly.WinForms;
@@ -39,12 +40,15 @@ internal static class HelpForms
         form.ShowDialog(owner);
     }
 
+    /// <summary>The program's version, from &lt;Version&gt; in the project file (without the build's commit id).</summary>
+    public static string Version =>
+        (typeof(HelpForms).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "2.0.0").Split('+')[0];
+
     public static void ShowAbout(IWin32Window owner)
     {
-        string version = typeof(HelpForms).Assembly.GetName().Version?.ToString(2) ?? "2.0";
         Dialogs.Show(owner, "About Space Monopoly", Color.MidnightBlue,
             [
-                $"Space Monopoly {version} — the freeware game of buying and selling shares.",
+                $"Space Monopoly {Version} — the freeware game of buying and selling shares.",
                 "Original game © 1998-2001 David Vivash (Borland C++ Builder), released under the GNU GPL v2.",
                 "Windows 11 edition by Jerame Chamberlain: rebuilt in C# / .NET with computer and Claude opponents.",
             ]);

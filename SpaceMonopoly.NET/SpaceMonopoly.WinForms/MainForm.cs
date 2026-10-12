@@ -103,7 +103,7 @@ internal sealed class MainForm : Form
 
         // Scaling for high-DPI screens is applied when layout resumes at the end of the constructor.
         SuspendLayout();
-        Text = "Space Monopoly";
+        Text = $"Space Monopoly {HelpForms.Version}";
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoScaleDimensions = new SizeF(96f, 96f);

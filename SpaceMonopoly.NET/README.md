@@ -13,10 +13,10 @@ The rules are ported from the original Borland C++ Builder source in `../sourceC
 ```powershell
 dotnet run --project SpaceMonopoly.WinForms
 dotnet test                      # rules, AI and storage tests
-dotnet publish SpaceMonopoly.WinForms -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true
+dotnet publish SpaceMonopoly.WinForms -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o publish
 ```
 
-The published `SpaceMonopoly.exe` needs the .NET 9 Desktop Runtime, which Visual Studio installs.
+The published `SpaceMonopoly.exe` is portable: it includes the .NET runtime, so it runs without anything else installed.
 
 ## Players
 
@@ -73,8 +73,9 @@ Settings and high scores are saved as JSON in `%LOCALAPPDATA%\SpaceMonopoly`.
   Amounts of a quadrillion or more are shown in words, for example ₲4.25 quintillion.
 - Starting a new game keeps the planets and clears old companies. In the original, the code meant to clear the grid didn't run.
 - The high-score file is no longer "encrypted", and it now records the player type and game type.
-- New: a **Modern** game type (25 rounds, a private hand of 4 squares, no dividends, a 100-share buying limit per turn,
-  1,000 shares per company and majority bonuses in mergers). See Help > How to Play. `SpaceMonopoly.Balance` plays
+- New: a **Modern** game type (25 rounds, a private hand of 4 squares, no dividends, a 50-share buying limit per turn,
+  100 shares per company that double at each of up to two splits, majority bonuses, interest, events and secret goals).
+  See Help > How to Play and the main [README](../README.md). `SpaceMonopoly.Balance` plays
   computer-vs-computer games and reports balance measures.
 - New: each offered square is marked with what it will do (company letter, M for merger, + to found, star), and
   pointing at it shows the price change and each player's gain.

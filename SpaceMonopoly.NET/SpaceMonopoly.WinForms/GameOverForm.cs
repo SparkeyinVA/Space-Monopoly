@@ -30,7 +30,7 @@ internal sealed class GameOverForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoScaleDimensions = new SizeF(96f, 96f);
         Font = new Font("Segoe UI", 9f);
-        ClientSize = new Size(760, 640);
+        ClientSize = new Size(880, 660);
         MinimumSize = new Size(600, 480);
 
         var title = Ui.Label($"{standings[0].Name} wins with {currency.Format(standings[0].NetWorth)} after {game.Turn} round{(game.Turn == 1 ? "" : "s")}!", 13f, FontStyle.Bold);
@@ -50,7 +50,7 @@ internal sealed class GameOverForm : Form
                 ? Ui.Row(s.Name, SecretGoals.Description(g.Goal), g.Reward > 0 ? currency.Format(g.Reward) : "not met", currency.Format(s.NetWorth))
                 : Ui.Row(s.Name, s.Kind.Label(), currency.Format(s.Money), currency.Format(s.NetWorth)));
         table.Dock = DockStyle.Top;
-        table.Height = 30 + standings.Count * 22;   // logical pixels: the form scales it for the screen
+        table.Height = 34 + standings.Count * 24;   // logical pixels: the form scales it for the screen
 
         var notes = new TextBox
         {
@@ -91,12 +91,14 @@ internal sealed class GameOverForm : Form
         if (history.Count < 2) return;
         g.SmoothingMode = SmoothingMode.AntiAlias;
         int pad = LogicalToDeviceUnits(36);
-        var plot = Rectangle.FromLTRB(area.Left + pad + LogicalToDeviceUnits(30), area.Top + LogicalToDeviceUnits(12), area.Right - pad, area.Bottom - pad);
+        using var font = new Font("Segoe UI", 8f);
+        // Room on the right for the players' names, so they never sit on top of the lines.
+        int names = _game.Players.Max(pl => TextRenderer.MeasureText(g, pl.Name, font).Width) + LogicalToDeviceUnits(10);
+        var plot = Rectangle.FromLTRB(area.Left + pad + LogicalToDeviceUnits(30), area.Top + LogicalToDeviceUnits(12), area.Right - names - LogicalToDeviceUnits(8), area.Bottom - pad);
         double max = Math.Max(1, history.SelectMany(h => h).Max(v => (double)v));
 
         using var axis = new Pen(Color.FromArgb(90, 255, 255, 255));
         using var text = new SolidBrush(Color.FromArgb(200, 255, 255, 255));
-        using var font = new Font("Segoe UI", 8f);
         g.DrawLine(axis, plot.Left, plot.Bottom, plot.Right, plot.Bottom);
         g.DrawLine(axis, plot.Left, plot.Top, plot.Left, plot.Bottom);
         g.DrawString(_currency.Format(new BigInteger(max)), font, text, area.Left + 4, plot.Top - 6);
@@ -106,15 +108,24 @@ internal sealed class GameOverForm : Form
         PointF At(int round, BigInteger worth) =>
             new(plot.Left + (float)round / (history.Count - 1) * plot.Width, plot.Bottom - (float)((double)worth / max * plot.Height));
 
+        var labels = new List<(int Player, float Y)>();
         for (int p = 0; p < _game.Players.Count; p++)
         {
-            var color = LineColors[p % LineColors.Length];
-            using var pen = new Pen(color, LogicalToDeviceUnits(2));
+            using var pen = new Pen(LineColors[p % LineColors.Length], LogicalToDeviceUnits(2));
             var points = history.Select((h, r) => At(r, h[p])).ToArray();
             g.DrawLines(pen, points);
-            using var brush = new SolidBrush(color);
-            var end = points[^1];
-            g.DrawString(_game.Players[p].Name, font, brush, Math.Min(end.X + 4, area.Right - LogicalToDeviceUnits(80)), end.Y - 7);
+            labels.Add((p, points[^1].Y));
+        }
+
+        // Each name beside the end of its line, pushed apart where lines finish close together.
+        float lineHeight = font.GetHeight(g) + 1;
+        float y = float.MinValue;
+        var placed = labels.OrderBy(l => l.Y).Select(l => (l.Player, Y: y = Math.Max(l.Y - lineHeight / 2, y + lineHeight))).ToList();
+        float overflow = placed.Count > 0 ? placed[^1].Y + lineHeight - area.Bottom : 0;
+        foreach (var (p, top) in placed)
+        {
+            using var brush = new SolidBrush(LineColors[p % LineColors.Length]);
+            g.DrawString(_game.Players[p].Name, font, brush, plot.Right + LogicalToDeviceUnits(6), top - Math.Max(0, overflow));
         }
     }
 }
