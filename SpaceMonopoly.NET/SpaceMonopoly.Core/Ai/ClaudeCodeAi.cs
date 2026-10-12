@@ -66,7 +66,8 @@ public sealed class ClaudeCodeAi : IAiPlayer
             sb.AppendLine("- From round 3 an event card is played at the start of each round; the next round's card is always announced in advance.");
             sb.AppendLine("- Each player has a secret goal worth a cash reward at the end.");
             sb.AppendLine("- Once per turn, before playing, you may swap one square in your hand for a new one. Once per game you may prospect: replace your whole hand.");
-            sb.AppendLine($"- A square you hold for {ModernRules.SquareExpiryTurns} of your turns without playing it expires at the end of the last one and is replaced.");
+            sb.AppendLine("- Once per turn, after trading, you may discard one square. It goes back into the draw, and you draw a different square at the start of " +
+                          "your next turn. Squares never expire: you may keep one as long as you like.");
         }
         else
         {
@@ -94,7 +95,7 @@ public sealed class ClaudeCodeAi : IAiPlayer
             sb.AppendLine("- Use your hand to plan: keep squares you'll want later, and don't play a merger square while an opponent would win the bonus.");
             sb.AppendLine($"- Cash earns {ModernRules.InterestPercent}% a turn, which is less than a growing company usually gains: keep only what you have a use for.");
             sb.AppendLine("- Prepare for next round's announced event, and play towards your secret goal.");
-            sb.AppendLine("- Swap a square that does nothing for you. Prospect only when your whole hand is poor.");
+            sb.AppendLine("- Swap or discard a square that does nothing for you, but keep squares that are part of a plan. Prospect only when your whole hand is poor.");
         }
         else
         {
@@ -121,6 +122,7 @@ public sealed class ClaudeCodeAi : IAiPlayer
         {
             sb.AppendLine("- \"swap\" (optional): the number of a square to throw away and replace BEFORE playing. You'll then be asked again with the new hand.");
             sb.AppendLine("- \"prospect\" (optional): true to replace your whole hand before playing (once per game). You'll then be asked again.");
+            sb.AppendLine("- \"discard\" (optional): the number of a square (not the one you play) to throw away after your trades; a new one arrives next turn.");
             sb.AppendLine("- \"convert\" (optional): if your square causes a merger and you're paid for shares in the company taken over, the percent " +
                           "(0-100) of that money to turn into shares of the surviving company at its new price. Leave it out to keep the cash.");
         }
@@ -128,7 +130,7 @@ public sealed class ClaudeCodeAi : IAiPlayer
     }
 
     internal const string Schema = """
-        {"type":"object","properties":{"choice":{"type":"integer","minimum":1,"maximum":5},"trades":{"type":"array","items":{"type":"object","properties":{"action":{"type":"string","enum":["buy","sell"]},"company":{"type":"string","enum":["A","B","C","D","E","F","G","H","I","J","K","L"]},"quantity":{"type":"integer","minimum":0}},"required":["action","company","quantity"],"additionalProperties":false}},"comment":{"type":"string"},"plan":{"type":"string"},"swap":{"type":"integer","minimum":0,"maximum":5},"prospect":{"type":"boolean"},"convert":{"type":"integer","minimum":0,"maximum":100}},"required":["choice","trades","comment","plan"],"additionalProperties":false}
+        {"type":"object","properties":{"choice":{"type":"integer","minimum":1,"maximum":5},"trades":{"type":"array","items":{"type":"object","properties":{"action":{"type":"string","enum":["buy","sell"]},"company":{"type":"string","enum":["A","B","C","D","E","F","G","H","I","J","K","L"]},"quantity":{"type":"integer","minimum":0}},"required":["action","company","quantity"],"additionalProperties":false}},"comment":{"type":"string"},"plan":{"type":"string"},"swap":{"type":"integer","minimum":0,"maximum":5},"prospect":{"type":"boolean"},"discard":{"type":"integer","minimum":0,"maximum":5},"convert":{"type":"integer","minimum":0,"maximum":100}},"required":["choice","trades","comment","plan"],"additionalProperties":false}
         """;
 
     private readonly IClaudeRunner _runner;
@@ -164,6 +166,8 @@ public sealed class ClaudeCodeAi : IAiPlayer
         _pendingTrades = null;
         _usedFallback = false;
         _convertPercent = null;
+        _discard = null;
+        _fallback.DropForHandLimit(game);   // S20: no longer last, so the built-in judgement drops the least useful square
 
         // Routine turn: nothing on offer founds or merges a company, so Hard plays it without asking Claude.
         if (KeyTurnsOnly && !MovePreview.ForChoices(game).Any(m => m.Kind is MoveKind.Merge or MoveKind.Found))
@@ -186,6 +190,9 @@ public sealed class ClaudeCodeAi : IAiPlayer
 
             var (square, trades, comment) = ParseAnswer(game, answer);
             _pendingTrades = trades;
+            if (answer.TryGetProperty("discard", out var discard) && discard.ValueKind == JsonValueKind.Number && discard.GetInt32() is int d
+                && d >= 1 && d <= game.Choices.Count && game.Choices[d - 1] != square)
+                _discard = game.Choices[d - 1];
             _convertPercent = answer.TryGetProperty("convert", out var convert) && convert.ValueKind == JsonValueKind.Number ? convert.GetInt32() : null;
             LastComment = comment;
             if (answer.TryGetProperty("plan", out var plan) && plan.GetString() is { Length: > 0 } text) LastPlan = text.Trim();
@@ -197,6 +204,17 @@ public sealed class ClaudeCodeAi : IAiPlayer
             LastComment = $"(Claude unavailable — {ex.Message} Playing this turn with the built-in Hard strategy.)";
             return _fallback.ChooseSquare(game);
         }
+    }
+
+    // S20: the square Claude asked to discard after trading, or null.
+    private Pos? _discard;
+
+    public Pos? ChooseDiscard(Game game)
+    {
+        if (_usedFallback) return _fallback.ChooseDiscard(game);
+        var square = _discard;
+        _discard = null;
+        return square is Pos p && game.CanDiscard && game.HandOf(game.CurrentPlayerIndex).Contains(p) ? p : null;
     }
 
     // Percent of its merger money Claude asked to convert on its own move (S15), or null to use the built-in judgement.
@@ -335,8 +353,7 @@ public sealed class ClaudeCodeAi : IAiPlayer
         for (int i = 0; i < game.Choices.Count; i++)
         {
             var square = game.Choices[i];
-            sb.Append($"  {i + 1}. Square {square}" + (game.IsModern && game.TurnsLeft(me, square) is int left and < 100
-                ? (left <= 1 ? " (last turn before it expires)" : $" ({left} turns before it expires)") : "") + ": ");
+            sb.Append($"  {i + 1}. Square {square}: ");
             if (game.ValidateChoice(square) is string why)
             {
                 sb.AppendLine($"NOT ALLOWED ({why})");

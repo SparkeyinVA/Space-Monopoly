@@ -16,7 +16,7 @@ public class TutorialTests
         Assert.Contains(ModernRules.BuyLimitPerTurn.ToString(), Tips.Text(Tips.BuyLimit));
         Assert.Contains($"{ModernRules.InterestPercent}%", Tips.Text(Tips.CantAfford));
         Assert.Contains($"{ModernRules.HandSize + 1} squares", Tips.Text(Tips.ExtraSquare));
-        Assert.Contains($"{ModernRules.SquareExpiryTurns} turns", Tips.Text(Tips.Expiring));
+        Assert.Contains("discard", Tips.Text(Tips.Discard));
         Assert.All(Tips.All, id => Assert.False(string.IsNullOrWhiteSpace(Tips.Text(id))));
     }
 
@@ -91,6 +91,27 @@ public class TutorialTests
         Assert.Equal("bonus", run.Current!.Id);
         while (!run.Finished) run.Acknowledge();
         Assert.Null(run.Current);
+    }
+
+    [Fact]
+    public void A_swap_during_the_grow_step_does_not_skip_the_new_hand_step()
+    {
+        var game = TutorialGame();
+        var run = new TutorialRun();
+        run.Progress.SquaresPlayed = 1;
+        run.Progress.SharesBought = 1;
+        run.Update(game);
+        Assert.Equal("grow", run.Current!.Id);
+
+        run.Progress.Swaps = 1;                           // the grow step suggests swapping
+        run.Progress.GrewOwnCompany = true;
+        run.Update(game);
+        while (run.Current!.Id != "new-hand") { run.Acknowledge(); run.Update(game); }
+        run.Update(game);
+        Assert.Equal("new-hand", run.Current!.Id);         // shown, and waits for Next
+        run.Progress.NewHands = 1;
+        run.Update(game);
+        Assert.Equal("new-hand", run.Current!.Id);
     }
 
     [Fact]

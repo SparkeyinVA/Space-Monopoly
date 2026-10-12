@@ -51,6 +51,7 @@ public sealed class RuleBasedAi : IAiPlayer
     /// <summary>Picks a square; with <paramref name="mayChangeHand"/> false it won't swap or prospect (for advice).</summary>
     public Pos ChooseSquare(Game game, bool mayChangeHand)
     {
+        DropForHandLimit(game);
         if (mayChangeHand && game.CanProspect && Level != AiLevel.Easy && MovePreview.ForChoices(game).All(m => m.Kind == MoveKind.Star))
             game.Prospect();
 
@@ -86,10 +87,6 @@ public sealed class RuleBasedAi : IAiPlayer
             // A personality's taste for mergers or founding, scaled to the player's wealth.
             if (Level != AiLevel.Easy) score += PersonalityBias(game, square, me);
 
-            // S18: play a useful square before it expires rather than lose it.
-            if (Level != AiLevel.Easy && game.TurnsLeft(me, square) <= 1 && sim.NetWorth(me) > game.NetWorth(me))
-                score += 0.005 * (double)game.NetWorth(me);
-
             // Small random tie-breaker so equal squares aren't always picked in the same order.
             score += _rng.NextDouble() * 0.01;
 
@@ -105,6 +102,41 @@ public sealed class RuleBasedAi : IAiPlayer
         }
         if (Level == AiLevel.Normal && legal.Count > 1 && _rng.NextDouble() < SecondBestChance) return second;
         return best;
+    }
+
+    /// <summary>
+    /// S20: when the hand is over the limit (no longer alone in last place), throws away the least useful square: the one
+    /// that does least for this player (Easy picks at random).
+    /// </summary>
+    public void DropForHandLimit(Game game)
+    {
+        while (game.MustDrop)
+        {
+            if (Level == AiLevel.Easy)
+            {
+                game.Drop(game.Choices[_rng.Next(game.Choices.Count)]);
+                continue;
+            }
+            int me = game.CurrentPlayerIndex;
+            game.Drop(LeastUseful(MovePreview.ForChoices(game), me).At);
+        }
+    }
+
+    private static MovePreview LeastUseful(IEnumerable<MovePreview> moves, int me) =>
+        moves.OrderBy(m => m.NetWorthChange[me]).ThenBy(m => m.Kind == MoveKind.Star ? 0 : 1).First();
+
+    /// <summary>
+    /// S20: after trading, Medium, Normal and Hard throw away the square that does least for them if it does nothing at all.
+    /// Merger and founding squares are kept: they may be part of a plan (a stake being built), and their value changes.
+    /// </summary>
+    public Pos? ChooseDiscard(Game game)
+    {
+        if (Level == AiLevel.Easy || !game.CanDiscard) return null;
+        int me = game.CurrentPlayerIndex;
+        var moves = game.HandOf(me).Select(p => MovePreview.For(game, p)).Where(m => m.Kind is not (MoveKind.Merge or MoveKind.Found)).ToList();
+        if (moves.Count == 0) return null;
+        var worst = LeastUseful(moves, me);
+        return worst.NetWorthChange[me] <= 0 ? worst.At : null;
     }
 
     private double PersonalityBias(Game game, Pos square, int me)

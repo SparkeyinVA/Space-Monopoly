@@ -17,6 +17,9 @@ public interface IAiPlayer
 
     /// <summary>Modern (S15): how many survivor shares to take for the money this player was paid at a merger.</summary>
     BigInteger ChooseConversion(Game game, ConversionOffer offer);
+
+    /// <summary>Modern (S20): a square to throw away after trading, or null to keep the hand.</summary>
+    Pos? ChooseDiscard(Game game);
 }
 
 public static class TradeExecutor

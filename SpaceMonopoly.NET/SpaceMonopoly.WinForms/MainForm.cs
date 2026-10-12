@@ -387,7 +387,8 @@ internal sealed class MainForm : Form
         _shownStep = -1;
         string name = _lastPlayers.FirstOrDefault(p => p.Kind == PlayerKind.Human)?.Name ?? "You";
         await StartGame(
-            [new(name, PlayerKind.Human), new("Easy 1", PlayerKind.ComputerEasy), new("Easy 2", PlayerKind.ComputerEasy)],
+            // No personalities: they don't change how Easy plays, and they'd be one more unexplained thing (F20).
+            [new(name, PlayerKind.Human), new("Easy 1", PlayerKind.ComputerEasy, Personality.None), new("Easy 2", PlayerKind.ComputerEasy, Personality.None)],
             GameType.Modern, Chaos.Calm, advisor: true, adaptive: false, Tutorial.MakeBoard(), Tutorial.Seed, Tutorial.Rules, Tutorial.Spec);
     }
 
@@ -722,6 +723,11 @@ internal sealed class MainForm : Form
         var trades = TradeExecutor.Apply(game, orders);
         foreach (var t in trades) Log(EventText.Describe(game, t, Currency));
         if (trades.Count == 0) Log($"{player.Name} made no trades.");
+        if (ai.ChooseDiscard(game) is Pos discard && game.CanDiscard)
+        {
+            game.Discard(discard);
+            Log($"{player.Name} discarded a square.");   // which one stays private, like the rest of the hand
+        }
         RefreshAll();
 
         await Task.Delay(_settings.ComputerDelayMs, token);
@@ -762,6 +768,11 @@ internal sealed class MainForm : Form
     {
         var game = _game;
         if (game is null || _computerBusy || !game.CurrentPlayer.IsHuman || !game.IsModern) return;
+        if (game.MustDrop)
+        {
+            SetStatus("You're no longer last: choose a square to throw away first (Drop in Your hand).");
+            return;
+        }
         if (!game.CanSwap)
         {
             SetStatus("You've already swapped a square this turn. Play one of the squares in your hand.");
@@ -774,14 +785,38 @@ internal sealed class MainForm : Form
         RefreshAll();
     }
 
+    /// <summary>S20: the human drops a square from a hand that's over the limit (no longer alone in last place).</summary>
+    private void HumanDrops(Pos square)
+    {
+        var game = _game;
+        if (game is null || _computerBusy || !game.CurrentPlayer.IsHuman || !game.MustDrop) return;
+        game.Drop(square);
+        Log($"{game.CurrentPlayer.Name} threw away {square}, back to {game.HandLimit(game.CurrentPlayerIndex)} squares.");
+        RefreshAll();
+    }
+
+    /// <summary>S20: the human discards a square after trading; a different one arrives at the start of their next turn.</summary>
+    private void HumanDiscards(Pos square)
+    {
+        var game = _game;
+        if (game is null || _computerBusy || !game.CurrentPlayer.IsHuman || !game.CanDiscard) return;
+        game.Discard(square);
+        Log($"{game.CurrentPlayer.Name} discarded {square}. A new square arrives at the start of your next turn.");
+        RefreshAll();
+    }
+
     /// <summary>
     /// F13: lists the human's hand in the side panel, each square with what it would do and Play / Swap buttons,
     /// how many swaps are left this turn and the New hand button (F12). Pointing at a row picks out its square.
+    /// S20: when the hand is over the limit, each row has Drop instead; while trading, each row has Discard.
     /// </summary>
     private void ShowHand(Game? game, bool inProgress)
     {
-        bool show = game is not null && inProgress && game.IsModern && !_computerBusy && game.CurrentPlayer.IsHuman && game.Phase == GamePhase.ChoosingSquare;
-        string key = show ? $"{game!.CurrentPlayerIndex}|{game.Turn}|{string.Join(";", game.Choices)}|{game.CanSwap}|{game.CanProspect}" : "";
+        bool show = game is not null && inProgress && game.IsModern && !_computerBusy && game.CurrentPlayer.IsHuman
+                    && game.Phase is GamePhase.ChoosingSquare or GamePhase.Trading;
+        bool trading = show && game!.Phase == GamePhase.Trading;
+        string key = show ? $"{game!.CurrentPlayerIndex}|{game.Turn}|{game.Phase}|{string.Join(";", game.HandOf(game.CurrentPlayerIndex))}|{game.CanSwap}|" +
+                            $"{game.CanProspect}|{game.CanDiscard}|{game.MustDrop}" : "";
         if (key == _handKey) return;
         _handKey = key;
 
@@ -798,38 +833,66 @@ internal sealed class MainForm : Form
             return;
         }
 
-        var header = Ui.Label($"Your hand · swaps left this turn: {(game!.CanSwap ? 1 : 0)}", 9f, FontStyle.Bold);
+        bool dropping = game!.MustDrop;
+        var header = Ui.Label(dropping ? "Your hand · You're no longer last: choose a square to throw away."
+            : trading ? $"Your hand · discards left this turn: {(game.CanDiscard ? 1 : 0)}"
+            : $"Your hand · swaps left this turn: {(game.CanSwap ? 1 : 0)}", 9f, FontStyle.Bold);
+        header.MaximumSize = new Size(LogicalToDeviceUnits(HandTextWidth + 2 * 62), 0);
+        if (dropping) header.ForeColor = Color.FromArgb(190, 80, 0);
         _handPanel.Controls.Add(header, 0, 0);
         _handPanel.SetColumnSpan(header, 3);
 
-        var previews = Previews(game);
-        for (int i = 0; i < game.Choices.Count; i++)
+        var hand = game.HandOf(game.CurrentPlayerIndex).ToList();
+        var previews = trading ? hand.Select(p => MovePreview.For(game, p)).ToList() : Previews(game);
+        for (int i = 0; i < hand.Count; i++)
         {
-            var square = game.Choices[i];
+            var square = hand[i];
             var preview = previews[i];
-            int left = game.TurnsLeft(game.CurrentPlayerIndex, square);
-            var text = Ui.Label($"{i + 1}. {preview.Summary(Currency, game.CurrentPlayerIndex)}" + (preview.Allowed is null ? "" : " (not allowed)") +
-                                (left <= 1 ? " · last turn" : left < 100 ? $" · {left} turns left" : ""));
-            if (left <= 1) text.ForeColor = Color.FromArgb(190, 80, 0);
+            bool notAllowed = !trading && !dropping && preview.Allowed is not null;
+            var text = Ui.Label($"{i + 1}. {preview.Summary(Currency, game.CurrentPlayerIndex)}" + (notAllowed ? " (not allowed)" : ""));
             // A fixed width: as a share of an auto-sized table, the column collapsed after a move to a monitor with different scaling.
             text.MinimumSize = text.MaximumSize = new Size(LogicalToDeviceUnits(HandTextWidth), 0);
             text.Anchor = AnchorStyles.Left;
             // Fixed sizes at the window's current scaling: auto-sized buttons grew far too big after the window was dragged
             // to a monitor with different scaling, squeezing the text.
-            var play = HandButton("Play", preview.Allowed is null);
-            var swap = HandButton("Swap", game.CanSwap);
-            play.Click += (_, _) => HumanChooses(square);
-            swap.Click += (_, _) => HumanSwaps(square);
             Ui.Tip(text, preview.Details(game, Currency));
-            Ui.Tip(swap, "Throw this square away and draw a new one (one swap a turn). Right-clicking the square does the same.");
-            foreach (Control c in new Control[] { text, play, swap })
+            var buttons = new List<Button>();
+            if (trading)
+            {
+                var discard = HandButton("Discard", game.CanDiscard);
+                discard.Click += (_, _) => HumanDiscards(square);
+                Ui.Tip(discard, "Throw this square away (one discard a turn). A different square arrives at the start of your next turn.");
+                buttons.Add(discard);
+            }
+            else if (dropping)
+            {
+                var drop = HandButton("Drop", true);
+                drop.Click += (_, _) => HumanDrops(square);
+                Ui.Tip(drop, "You're no longer in last place, so throw this square away to get back to the usual hand.");
+                buttons.Add(drop);
+            }
+            else
+            {
+                var play = HandButton("Play", preview.Allowed is null);
+                var swap = HandButton("Swap", game.CanSwap);
+                play.Click += (_, _) => HumanChooses(square);
+                swap.Click += (_, _) => HumanSwaps(square);
+                Ui.Tip(swap, "Throw this square away and draw a new one (one swap a turn). Right-clicking the square does the same.");
+                buttons.Add(play);
+                buttons.Add(swap);
+            }
+            foreach (Control c in buttons.Prepend<Control>(text))
             {
                 c.MouseEnter += (_, _) => _boardView.Highlight = square;
                 c.MouseLeave += (_, _) => { if (_boardView.Highlight == square) _boardView.Highlight = null; };
             }
             _handPanel.Controls.Add(text, 0, i + 1);
-            _handPanel.Controls.Add(play, 1, i + 1);
-            _handPanel.Controls.Add(swap, 2, i + 1);
+            for (int b = 0; b < buttons.Count; b++) _handPanel.Controls.Add(buttons[b], 1 + b, i + 1);
+        }
+        if (trading || dropping)
+        {
+            _handPanel.ResumeLayout();
+            return;
         }
 
         // F12: "New hand" instead of "Prospect", with the explanation on screen.
@@ -840,7 +903,7 @@ internal sealed class MainForm : Form
         explain.MinimumSize = explain.MaximumSize = new Size(LogicalToDeviceUnits(HandTextWidth), 0);
         explain.ForeColor = SystemColors.GrayText;
         explain.Anchor = AnchorStyles.Left;
-        int last = game.Choices.Count + 1;
+        int last = hand.Count + 1;
         _handPanel.Controls.Add(explain, 0, last);
         _handPanel.Controls.Add(_newHand, 1, last);
         _handPanel.SetColumnSpan(_newHand, 2);
@@ -909,10 +972,9 @@ internal sealed class MainForm : Form
     /// <summary>Logs what the round's event card did (Modern). Events never stop play with a dialog.</summary>
     private void ReportRoundStart(Game game)
     {
-        // S18: tell a human about their own squares that expired (other players' hands stay private).
-        if (game.ExpiredFor >= 0 && game.Players[game.ExpiredFor].IsHuman)
-            foreach (var square in game.ExpiredSquares)
-                Log($"{game.Players[game.ExpiredFor].Name}: square {square} expired after {ModernRules.SquareExpiryTurns} turns in your hand and was replaced.");
+        // S20: a hand can only be short when nothing is left to draw.
+        if (game.HandShort && game.CurrentPlayer.IsHuman)
+            Log($"{game.CurrentPlayer.Name}: no squares are left to draw, so your hand is short this turn.");
         if (game.RoundStartEvents.Count == 0) return;
         ReportEvents(game, game.RoundStartEvents, popups: false);
         RefreshAll();
@@ -1206,7 +1268,9 @@ internal sealed class MainForm : Form
                 _kindLabel.Text += Environment.NewLine + "Your secret goal: " + SecretGoals.Description(goal);
             if (inProgress && player.IsHuman && game.LateBuying)
                 _kindLabel.Text += Environment.NewLine + $"Last {ModernRules.LateBuyRounds} rounds: shares you buy now don't count for the final payout ranking.";
-            if (inProgress && player.IsHuman && game.IsModern && game.HandOf(game.CurrentPlayerIndex).Count > ModernRules.HandSize)
+            if (inProgress && player.IsHuman && game.MustDrop)
+                _kindLabel.Text += Environment.NewLine + "You're no longer last: choose a square to throw away (Drop in Your hand).";
+            else if (inProgress && player.IsHuman && game.IsModern && game.HandOf(game.CurrentPlayerIndex).Count > ModernRules.HandSize)
                 _kindLabel.Text += Environment.NewLine + "You're in last place, so you hold an extra square.";
             string Card(EventCard card) => EventCards.Title(card) + (card == EventCard.QuietQuarter ? "" : " — " + game.DescribeEvent(card));
             _eventLabel.Text = !inProgress || game.NextEvent is not EventCard next ? ""

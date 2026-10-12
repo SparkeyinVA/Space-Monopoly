@@ -120,6 +120,21 @@ public class ClaudePromptTests
     }
 
     [Fact]
+    public async Task A_discard_answer_throws_away_that_square_after_trading()
+    {
+        var game = Modern();
+        var discarded = game.HandOf(0)[3];
+        var runner = new RecordingRunner("""{"choice":1,"trades":[],"comment":"","plan":"","discard":4}""");
+        var ai = new ClaudeCodeAi(runner, new RuleBasedAi(AiLevel.Hard, 1));
+
+        game.PlaceSquare(await ai.ChooseSquareAsync(game, CancellationToken.None));
+        TradeExecutor.Apply(game, await ai.PlanTradesAsync(game, CancellationToken.None));
+        Assert.Equal(discarded, ai.ChooseDiscard(game));
+        Assert.Contains("\"discard\"", ClaudeCodeAi.Schema);
+        Assert.DoesNotContain("expire", ClaudeCodeAi.BuildPrompt(Modern()));
+    }
+
+    [Fact]
     public void A_personality_adds_its_paragraph()
     {
         Assert.Contains("RAIDER", ClaudeCodeAi.BuildSystemPrompt(Modern(), Personality.Raider));

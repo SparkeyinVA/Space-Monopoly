@@ -43,14 +43,12 @@ public sealed partial class Game
     private BigInteger _boughtThisTurn;
     private bool _swappedThisTurn;
 
-    // S18: the round from which each square in a hand counts, so it can expire after ModernRules.SquareExpiryTurns turns.
-    private Dictionary<Pos, int> _heldFrom = [];
+    // S20: whether the current player has discarded this turn, and each player's last discard, which their next draw must not be.
+    private bool _discardedThisTurn;
+    private Pos?[] _lastDiscard;
 
-    /// <summary>S18: squares that expired from the hand of the player whose turn just ended (only that player may see them).</summary>
-    public IReadOnlyList<Pos> ExpiredSquares { get; private set; } = [];
-
-    /// <summary>S18: the player whose squares are in <see cref="ExpiredSquares"/>.</summary>
-    public int ExpiredFor { get; private set; } = -1;
+    // Set while the offer is a single square for a preview (or a test), so the hand limit doesn't block it.
+    private bool _offerOverridden;
 
     public Game(GridSpec spec, Board startingBoard, IEnumerable<(string Name, PlayerKind Kind)> players,
         GameType type, GameRules rules, int? seed = null)
@@ -77,6 +75,7 @@ public sealed partial class Game
 
         _hands = _players.Select(_ => new List<Pos>()).ToArray();
         _prospected = new bool[_players.Length];
+        _lastDiscard = new Pos?[_players.Length];
         if (IsModern)
         {
             for (int i = 0; i < _players.Length; i++) FillHand(i);
@@ -100,9 +99,9 @@ public sealed partial class Game
         _prospected = (bool[])other._prospected.Clone();
         _boughtThisTurn = other._boughtThisTurn;
         _swappedThisTurn = other._swappedThisTurn;
-        _heldFrom = new Dictionary<Pos, int>(other._heldFrom);
-        ExpiredSquares = other.ExpiredSquares;
-        ExpiredFor = other.ExpiredFor;
+        _discardedThisTurn = other._discardedThisTurn;
+        _lastDiscard = (Pos?[])other._lastDiscard.Clone();
+        _offerOverridden = other._offerOverridden;
         InterestThisTurn = other.InterestThisTurn;
         CopyEvents(other);
         CopyComebacks(other);
@@ -197,6 +196,8 @@ public sealed partial class Game
     {
         _boughtThisTurn = 0;
         _swappedThisTurn = false;
+        _discardedThisTurn = false;
+        _offerOverridden = false;
         InterestThisTurn = IsModern ? CurrentPlayer.Money * ModernRules.InterestPercent / 100 : 0;
         CurrentPlayer.Money += InterestThisTurn;
         _choices = IsModern ? RefreshHand(CurrentPlayerIndex) : GenerateChoices();
@@ -237,7 +238,6 @@ public sealed partial class Game
         if (Phase == GamePhase.Over) return true;
         if (Phase != GamePhase.Trading) throw new InvalidOperationException("Choose a square before ending the turn.");
         SettleConversions(new Dictionary<int, BigInteger>());   // offers nobody answered are taken as cash
-        ExpireSquares();
 
         CurrentPlayerIndex = (CurrentPlayerIndex + 1) % _players.Length;
         if (CurrentPlayerIndex == 0)
@@ -298,7 +298,7 @@ public sealed partial class Game
     }
 
     /// <summary>True if the current player may still swap one square from their hand this turn (Modern).</summary>
-    public bool CanSwap => IsModern && Phase == GamePhase.ChoosingSquare && !_swappedThisTurn;
+    public bool CanSwap => IsModern && Phase == GamePhase.ChoosingSquare && !_swappedThisTurn && !MustDrop;
 
     /// <summary>Throws away one square from the current player's hand and draws a replacement (once per turn).</summary>
     public void Swap(Pos square)
@@ -312,41 +312,50 @@ public sealed partial class Game
         _choices = [.. hand];
     }
 
-    /// <summary>S18: how many of the player's turns a square in their hand has left, counting this one if it's their turn.</summary>
-    public int TurnsLeft(int player, Pos square)
+    /// <summary>S20: true if the current player may still throw away one square this turn (after playing, before End Turn).</summary>
+    public bool CanDiscard => IsModern && Phase == GamePhase.Trading && !_discardedThisTurn && _hands[CurrentPlayerIndex].Count > 0;
+
+    /// <summary>
+    /// S20: throws away one square from the current player's hand, back into the draw. The replacement is drawn at the start
+    /// of their next turn, and it is never this square.
+    /// </summary>
+    public void Discard(Pos square)
     {
-        if (!IsModern || !_heldFrom.TryGetValue(square, out int from)) return int.MaxValue;
-        return ModernRules.SquareExpiryTurns - (Turn - from);
+        if (!CanDiscard) throw new InvalidOperationException("You can discard only one square a turn, after playing a square.");
+        if (!_hands[CurrentPlayerIndex].Remove(square)) throw new InvalidOperationException("That square isn't in your hand.");
+        _discardedThisTurn = true;
+        _lastDiscard[CurrentPlayerIndex] = square;
     }
 
     /// <summary>
-    /// S18: at the end of a player's turn, squares they have held for <see cref="ModernRules.SquareExpiryTurns"/> of their turns
-    /// without playing are thrown away (back into the draw) and replaced.
+    /// S20: true when the current player holds more squares than they're allowed (they were alone in last place and no longer
+    /// are), so they must throw one away with <see cref="Drop"/> before playing.
     /// </summary>
-    private void ExpireSquares()
+    public bool MustDrop => IsModern && Phase == GamePhase.ChoosingSquare && !_offerOverridden && _hands[CurrentPlayerIndex].Count > HandSizeFor(CurrentPlayerIndex);
+
+    /// <summary>The number of squares a player is allowed: <see cref="ModernRules.HandSize"/>, one more while alone in last place.</summary>
+    public int HandLimit(int player) => HandSizeFor(player);
+
+    /// <summary>S20: throws away a square (back into the draw) from a hand that's over the limit; see <see cref="MustDrop"/>.</summary>
+    public void Drop(Pos square)
     {
-        ExpiredSquares = [];
-        ExpiredFor = -1;
-        if (!IsModern) return;
-        int me = CurrentPlayerIndex;
-        var expired = _hands[me].Where(p => TurnsLeft(me, p) <= 1).ToList();
-        if (expired.Count == 0) return;
-        foreach (var p in expired)
-        {
-            _hands[me].Remove(p);
-            _heldFrom.Remove(p);
-        }
-        FillHand(me, exclude: expired);
-        ExpiredSquares = expired;
-        ExpiredFor = me;
+        if (!MustDrop) throw new InvalidOperationException("You don't hold too many squares.");
+        if (!_hands[CurrentPlayerIndex].Remove(square)) throw new InvalidOperationException("That square isn't in your hand.");
+        _choices = [.. _hands[CurrentPlayerIndex]];
     }
+
+    /// <summary>S20: true if the player's hand is short at the start of their turn because the draw ran out.</summary>
+    public bool HandShort { get; private set; }
 
     /// <summary>Throws away squares that can no longer be played, tops the hand up and returns it.</summary>
     private List<Pos> RefreshHand(int player)
     {
         bool canFound = Companies.Any(c => !c.Exists);
         _hands[player].RemoveAll(p => !CanOffer(p, canFound));
-        FillHand(player);
+        // S20: draw up to the number allowed; a square discarded last turn can't come straight back.
+        FillHand(player, exclude: _lastDiscard[player] is Pos d ? [d] : null);
+        _lastDiscard[player] = null;
+        HandShort = _hands[player].Count < HandSizeFor(player);
         return [.. _hands[player]];
     }
 
@@ -375,8 +384,6 @@ public sealed partial class Game
             var pick = from[_rng.Next(from.Count)];
             hand.Add(pick);
             pool.Remove(pick);
-            // S18: a square drawn after playing (or at the end of a turn) starts counting from the player's next turn.
-            _heldFrom[pick] = Phase == GamePhase.Trading ? Turn + 1 : Turn;
         }
     }
 
@@ -384,6 +391,7 @@ public sealed partial class Game
     internal void OfferOnlyForPreview(Pos p)
     {
         _choices = [p];
+        _offerOverridden = true;
         Phase = GamePhase.ChoosingSquare;
     }
 
@@ -391,6 +399,7 @@ public sealed partial class Game
     internal void SetChoicesForTesting(params Pos[] choices)
     {
         _choices = [.. choices];
+        _offerOverridden = true;
         Phase = GamePhase.ChoosingSquare;
     }
 
@@ -406,6 +415,7 @@ public sealed partial class Game
     public string? ValidateChoice(Pos p)
     {
         if (Phase != GamePhase.ChoosingSquare) return "It isn't time to choose a square.";
+        if (MustDrop) return "You're no longer last: choose a square to throw away first.";
         if (!_choices.Contains(p)) return "Choose one of the highlighted squares.";
         if (!Rules.ForceMergers && !Rules.ForceExpansion) return null;
 

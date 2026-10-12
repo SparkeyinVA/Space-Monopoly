@@ -37,7 +37,8 @@ public static class RulesText
             ? $"You hold a hand of {ModernRules.HandSize} squares that only you can see (they flash on the board). Play one, then you draw a new one. " +
               "Squares that can no longer be played are replaced automatically. Your hand is listed in the side panel: each square shows what it would do, with Play and Swap buttons. Before you play " +
               "you may swap one square a turn (Swap, or right-click it on the board), and once per game you may take a New hand: " +
-              "throw away all your squares and draw new ones."
+              "throw away all your squares and draw new ones. After trading you may also discard one square (Discard); a different one arrives at the " +
+              "start of your next turn. Squares never expire, and every turn starts with a full hand."
             : $"{Game.ChoiceCount} squares are offered each turn (they flash on the board). Click one of them.");
         Line("Each square is marked with what it will do: a company's letter if it grows that company, M for a merger, + to found a new company, " +
              "or a star if nothing happens. Point at a square to see the change in share price and in each player's net worth.");
@@ -109,9 +110,8 @@ public static class RulesText
                  "Merger Mania, Insider Scandal, Galactic Grant, Tax Audit and Dividend Day; the rest are Quiet Quarters. Choose Calm, Standard or Wild in New Game.");
             Line($"  • Dividend Day pays every player {EventCards.DividendPerCompany:N0} for each company they hold at least one share in (not per share), " +
                  "so holding a share in several companies before it pays off, and helps most when you're behind.");
-            Line($"  • While you're alone in last place you hold {ModernRules.HandSize + 1} squares, and the extra one helps a company you hold or founds one.");
-            Line($"  • A square you hold for {ModernRules.SquareExpiryTurns} of your turns without playing it expires at the end of the last one and is replaced. " +
-                 "The hand list shows the turns left on each square.");
+            Line($"  • While you're alone in last place you hold {ModernRules.HandSize + 1} squares, and the extra one helps a company you hold or founds one. " +
+                 $"When you're no longer last, you choose one to throw away at the start of your turn, back to {ModernRules.HandSize}.");
             Line("  • Each player is dealt a secret goal (yours is shown in the side panel), revealed at the end with its reward.");
             Line();
         }

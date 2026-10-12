@@ -347,9 +347,11 @@ public class ModernTests
         Hold(game, 1, 12);
         while (!game.LateBuying || game.CurrentPlayerIndex != 0)
         {
+            while (game.MustDrop) game.Drop(game.Choices[^1]);   // S20: no longer last
             if (game.Phase == GamePhase.ChoosingSquare) game.PlaceSquare(game.Choices[0]);
             game.EndTurn();
         }
+        while (game.MustDrop) game.Drop(game.Choices[^1]);
         game.PlaceSquare(game.Choices[0]);
         game.CurrentPlayer.Money = 1_000_000;
         var before = game.Players[0].Shares[0];          // the founder's shares (doubled by any splits)

@@ -92,9 +92,10 @@ public static class Tutorial
             (g, p) => g.BonusesCollected[HumanSeat] > 0, NeedsAcknowledgement: true,
             Target: g => FirstSquare(g, MoveKind.Merge)),
         new("new-hand",
-            (g, c) => $"Stuck with poor squares? Swap one a turn, or take a New hand once per game. A square you don't play within " +
-                      $"{ModernRules.SquareExpiryTurns} turns is replaced automatically.",
-            (g, p) => p.Swaps > 0 || p.NewHands > 0, NeedsAcknowledgement: true),
+            (g, c) => "Stuck with poor squares? Swap one a turn before you play, or take a New hand once per game. After trading you can also " +
+                      "Discard one square; a different one arrives at the start of your next turn. Squares never expire, so keep the ones you're saving.",
+            // Only Next finishes it: the grow step may already have had the learner swap, which mustn't skip this (F20).
+            (g, p) => false, NeedsAcknowledgement: true),
         new("end",
             (g, c) => $"A real Modern game lasts {ModernRules.Rounds} rounds. At the end, companies pay their largest holders a final payout and secret goals " +
                       "are revealed. The highest net worth wins. Watch the side panel for your secret goal and next round's event card. " +

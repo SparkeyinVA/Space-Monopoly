@@ -15,9 +15,6 @@ public static class ModernRules
     /// <summary>Squares each player holds.</summary>
     public const int HandSize = 4;
 
-    /// <summary>S18: a square held this many of its owner's turns without being played expires at the end of the last one.</summary>
-    public static int SquareExpiryTurns { get; set; } = 4;
-
     // S19: these are settable so the balance tool can try other values; the game itself never changes them.
 
     /// <summary>Shares a player may buy in one turn, across all companies. Selling is unlimited. (S19: 50.)</summary>

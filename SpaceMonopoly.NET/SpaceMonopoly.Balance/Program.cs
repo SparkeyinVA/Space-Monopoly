@@ -15,7 +15,6 @@ using SpaceMonopoly.Core.Ai;
 
 var options = Options.Parse(args);
 // --expiry N: turns a square can be held before it expires (S18), for trying other values.
-if (args.SkipWhile(a => a != "--expiry").Skip(1).FirstOrDefault() is string expiry) ModernRules.SquareExpiryTurns = int.Parse(expiry, CultureInfo.InvariantCulture);
 // S19 experiment settings: --cash N, --halving yes, --split4 yes (first split at 4 squares, second at 8).
 string? Arg(string name) => args.SkipWhile(a => a != name).Skip(1).FirstOrDefault();
 if (Arg("--cash") is string cash) ModernRules.StartingMoney = long.Parse(cash, CultureInfo.InvariantCulture);
@@ -195,7 +194,8 @@ internal static class Simulator
             }
 
             // A dead turn: every square on offer only places a star. "Nothing for you": no square raises your own net worth.
-            // Both are measured at the start of the turn, before any swap or prospect.
+            // Both are measured at the start of the turn, before any swap or prospect (but after dropping down to the hand limit, S20).
+            ais[game.CurrentPlayerIndex].DropForHandLimit(game);
             var previews = MovePreview.ForChoices(game);
             if (previews.All(m => m.Kind == MoveKind.Star)) dead++;
             bool helpsNothing = previews.All(m => m.NetWorthChange[game.CurrentPlayerIndex] <= 0);
@@ -230,6 +230,7 @@ internal static class Simulator
                 }
             }
             TradeExecutor.Apply(game, ai.PlanTrades(game));
+            if (ai.ChooseDiscard(game) is Pos discard) game.Discard(discard);   // S20
             turns++;
 
             var worth = game.NetWorth(game.CurrentPlayerIndex);
@@ -421,6 +422,7 @@ internal static class PersonalityReport
             mergers[me] += events.OfType<MergerEvent>().Count();
             founded[me] += events.OfType<CompanyFoundedEvent>().Count();
             TradeExecutor.Apply(game, ais[me].PlanTrades(game));
+            if (ais[me].ChooseDiscard(game) is Pos discard) game.Discard(discard);   // S20
             var worth = game.NetWorth(me);
             if (worth > 0)
             {
