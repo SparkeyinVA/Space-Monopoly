@@ -37,3 +37,6 @@ obj/
 .vs/
 *.user
 TestResults/
+
+# Notes for Claude Code sessions: kept locally, not shared
+CLAUDE.md
